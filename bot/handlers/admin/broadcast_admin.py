@@ -7,7 +7,7 @@ from sqlalchemy import select
 from ...models import User
 from ...keyboards.admin import cancel_kb
 from ...services.admin_service import is_admin, log_action
-from ...utils.emoji import BROADCAST, OK, FAIL, STATS
+from ...utils.emoji import BROADCAST, OK, FAIL, STATS, plain
 
 router = Router()
 
@@ -42,8 +42,8 @@ async def process_broadcast_text(message: Message, state: FSMContext):
     from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text=f"{OK} Отправить всем", callback_data="confirm_broadcast"),
-        InlineKeyboardButton(text=f"{FAIL} Отмена", callback_data="admin_main"),
+        InlineKeyboardButton(text=f"{plain(OK)} Отправить всем", callback_data="confirm_broadcast"),
+        InlineKeyboardButton(text=f"{plain(FAIL)} Отмена", callback_data="admin_main"),
     )
     await message.answer(
         f"{BROADCAST} <b>Предпросмотр рассылки:</b>\n"
@@ -103,7 +103,7 @@ async def cb_admin_settings(call: CallbackQuery, session: AsyncSession, user: Us
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=f"{FAIL} Назад", callback_data="admin_main"))
+    builder.row(InlineKeyboardButton(text=f"{plain(FAIL)} Назад", callback_data="admin_main"))
     await call.message.edit_text(
         f"{SETTINGS} <b>Настройки</b>\n"
         f"{'━' * 16}\n\n"
