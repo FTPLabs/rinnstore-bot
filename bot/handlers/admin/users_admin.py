@@ -11,7 +11,7 @@ from ...services.admin_service import (
 )
 from ...services.order_service import get_user_orders
 from ...utils.emoji import (
-    USERS, SHIELD, BANNED, OK, FAIL, BACK, STATS, ORDERS, PROFILE
+    USERS, SHIELD, BANNED, OK, FAIL, BACK, STATS, ORDERS, PROFILE, plain
 )
 
 router = Router()
@@ -30,13 +30,13 @@ async def cb_admin_users(call: CallbackQuery, session: AsyncSession, user: User)
     from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
     for u in users:
-        ban_icon = f"{BANNED}" if u.is_banned else f"{SHIELD}"
+        ban_icon = plain(BANNED) if u.is_banned else plain(SHIELD)
         name = u.first_name or f"id{u.id}"
         builder.row(InlineKeyboardButton(
             text=f"{ban_icon} {name} · {u.id}",
             callback_data=f"admin_user_{u.id}"
         ))
-    builder.row(InlineKeyboardButton(text=f"{BACK} Назад", callback_data="admin_main"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"))
 
     text = (
         f"{USERS} <b>Пользователи</b>\n"
@@ -83,7 +83,7 @@ async def cb_admin_ban(call: CallbackQuery, session: AsyncSession, user: User):
     target_id = int(call.data.split("_")[2])
     new_banned = await toggle_user_ban(session, target_id)
     await log_action(session, user.id, "toggle_ban", "user", target_id, {"banned": new_banned})
-    status = f"{BANNED} заблокирован" if new_banned else f"{OK} разблокирован"
+    status = f"{plain(BANNED)} заблокирован" if new_banned else f"{plain(OK)} разблокирован"
     await call.answer(f"Пользователь {status}", show_alert=True)
     call.data = f"admin_user_{target_id}"
     await cb_admin_user_detail(call, session, user)
@@ -101,13 +101,13 @@ async def cb_admin_user_orders(call: CallbackQuery, session: AsyncSession, user:
     builder = InlineKeyboardBuilder()
     for order in orders:
         status_e = {
-            "pending": "⏳", "paid": f"{OK}", "delivered": f"{KEY}", "cancelled": f"{FAIL}"
+            "pending": "⏳", "paid": plain(OK), "delivered": plain(KEY), "cancelled": plain(FAIL)
         }.get(order.status, "❓")
         builder.row(InlineKeyboardButton(
             text=f"{status_e} #{order.id} — {order.total_amount}₽",
             callback_data=f"admin_order_{order.id}"
         ))
-    builder.row(InlineKeyboardButton(text=f"{BACK} Назад", callback_data=f"admin_user_{target_id}"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data=f"admin_user_{target_id}"))
 
     text = (
         f"{ORDERS} <b>Заказы пользователя {target_id}</b>\n"
