@@ -15,7 +15,7 @@ from ...services.admin_service import (
     add_product_keys, get_stock_for_product, log_action
 )
 from ...utils.emoji import (
-    BAG, KEY, OK, FAIL, ADD, EDIT, STATS, BACK, CATALOG, TAG, STAR
+    BAG, KEY, OK, FAIL, ADD, EDIT, STATS, BACK, CATALOG, TAG, STAR, plain
 )
 
 router = Router()
@@ -85,7 +85,7 @@ async def cb_toggle_product(call: CallbackQuery, session: AsyncSession, user: Us
     product_id = int(call.data.split("_")[3])
     new_status = await toggle_product(session, product_id)
     await log_action(session, user.id, "toggle_product", "product", product_id, {"active": new_status})
-    status_text = f"{OK} включён" if new_status else f"{FAIL} отключён"
+    status_text = f"{plain(OK)} включён" if new_status else f"{plain(FAIL)} отключён"
     await call.answer(f"Товар {status_text}", show_alert=True)
     call.data = f"admin_product_{product_id}"
     await cb_admin_product_detail(call, session, user)
@@ -101,10 +101,10 @@ async def cb_admin_stock(call: CallbackQuery, session: AsyncSession, user: User)
     from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(
-        text=f"{ADD} Добавить ключи",
+        text=f"{plain(ADD)} Добавить ключи",
         callback_data=f"admin_add_keys_{product_id}"
     ))
-    builder.row(InlineKeyboardButton(text=f"{BACK} Назад", callback_data=f"admin_product_{product_id}"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data=f"admin_product_{product_id}"))
     text = (
         f"{STATS} <b>Остатки товара #{product_id}</b>\n"
         f"{'━' * 16}\n\n"
@@ -167,7 +167,7 @@ async def cb_admin_add_product(call: CallbackQuery, session: AsyncSession, user:
             text=cat.name,
             callback_data=f"select_cat_{cat.id}"
         ))
-    builder.row(InlineKeyboardButton(text=f"{BACK} Отмена", callback_data="admin_products"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Отмена", callback_data="admin_products"))
     await call.message.edit_text(
         f"{ADD} <b>Новый товар</b>\n\nВыберите категорию:",
         reply_markup=builder.as_markup(),
