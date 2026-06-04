@@ -10,7 +10,7 @@ from ..services.catalog_service import (
     get_stock_count, get_product_category_id
 )
 from ..utils.emoji import (
-    CATALOG, STAR, KEY, OK, FAIL, BACK, BAG, TAG
+    CATALOG, STAR, KEY, OK, FAIL, BACK, BAG, TAG, plain
 )
 
 router = Router()
@@ -52,7 +52,7 @@ async def cb_category(call: CallbackQuery, session: AsyncSession):
     products = await get_products_in_category(session, cat_id)
     if not products:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=f"{BACK} Назад", callback_data="catalog"))
+        builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="catalog"))
         await call.message.edit_text(
             f"{STAR} <b>{category.name}</b>\n\n{FAIL} В этой категории пока нет товаров.",
             reply_markup=builder.as_markup(),
@@ -70,13 +70,13 @@ async def cb_category(call: CallbackQuery, session: AsyncSession):
         stock_text = f"{stock} шт." if stock > 0 else "нет"
         lines.append(f"{TAG} <b>{p.name}</b> — {p.price} руб. | {stock_icon} {stock_text}")
 
-        status_prefix = "" if stock > 0 else f"{FAIL} "
+        status_prefix = "" if stock > 0 else f"{plain(FAIL)} "
         builder.row(InlineKeyboardButton(
             text=f"{status_prefix}{p.name} — {p.price} руб.",
             callback_data=f"product_{p.id}"
         ))
 
-    builder.row(InlineKeyboardButton(text=f"{BACK} Назад", callback_data="catalog"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="catalog"))
     await call.message.edit_text(
         "\n".join(lines),
         reply_markup=builder.as_markup(),
@@ -127,4 +127,4 @@ async def cb_back_to_category(call: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data == "no_stock")
 async def cb_no_stock(call: CallbackQuery):
-    await call.answer(f"❌ Товар закончился. Попробуйте позже.", show_alert=True)
+    await call.answer("❌ Товар закончился. Попробуйте позже.", show_alert=True)
