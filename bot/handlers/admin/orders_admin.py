@@ -7,10 +7,11 @@ from ...keyboards.admin import admin_orders_kb, admin_order_detail_kb
 from ...services.admin_service import is_admin, get_orders_paginated, log_action
 from ...services.order_service import deliver_order, cancel_order, get_order
 from ...utils.emoji import (
-    ORDERS, KEY, OK, FAIL, BACK, CLOCK, STATS, BAG, TAG
+    ORDERS, KEY, OK, FAIL, BACK, CLOCK, STATS, BAG, TAG, plain
 )
 
 router = Router()
+
 
 PAGE_SIZE = 10
 STATUS_MAP = {
@@ -102,7 +103,7 @@ async def cb_admin_deliver(call: CallbackQuery, session: AsyncSession, user: Use
     order_id = int(call.data.split("_")[2])
     delivered = await deliver_order(session, order_id)
     await log_action(session, user.id, "manual_deliver", "order", order_id)
-    await call.answer(f"{OK} Выдано {len(delivered)} товаров", show_alert=True)
+    await call.answer(f"✅ Выдано {len(delivered)} товаров", show_alert=True)
     call.data = f"admin_order_{order_id}"
     await cb_admin_order_detail(call, session, user)
 
@@ -114,5 +115,5 @@ async def cb_admin_cancel_order(call: CallbackQuery, session: AsyncSession, user
     order_id = int(call.data.split("_")[3])
     await cancel_order(session, order_id)
     await log_action(session, user.id, "cancel_order", "order", order_id)
-    await call.answer(f"{FAIL} Заказ #{order_id} отменён", show_alert=True)
+    await call.answer(f"❌ Заказ #{order_id} отменён", show_alert=True)
     await cb_admin_orders(call, session, user)
