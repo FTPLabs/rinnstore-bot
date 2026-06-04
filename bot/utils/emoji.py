@@ -4,11 +4,21 @@ https://t.me/addemoji/TgAndroidIcons
 
 Используются в сообщениях с parse_mode='HTML' через тег:
 <tg-emoji emoji-id="ID">FALLBACK</tg-emoji>
+
+Для текста кнопок InlineKeyboardButton и call.answer() используйте plain(EMOJI),
+так как они не поддерживают HTML-разметку.
 """
+import re
 
 
 def e(emoji_id: str, fallback: str) -> str:
     return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
+
+
+def plain(emoji_html: str) -> str:
+    """Извлекает fallback-символ из тега <tg-emoji> для кнопок и уведомлений."""
+    m = re.search(r'<tg-emoji[^>]*>(.+?)</tg-emoji>', emoji_html)
+    return m.group(1) if m else emoji_html
 
 
 # ── Навигация ──────────────────────────────────────────────
