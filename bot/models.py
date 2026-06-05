@@ -22,6 +22,8 @@ class User(Base):
     referred_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     balance = Column(Numeric(12, 2), default=Decimal("0"))
     total_spent = Column(Numeric(12, 2), default=Decimal("0"))
+    terms_accepted = Column(Boolean, default=False)
+    captcha_passed = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

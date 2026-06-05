@@ -12,11 +12,15 @@ from .database import engine, Base
 from .middlewares.db import DbSessionMiddleware
 from .middlewares.auth import UserMiddleware
 from .handlers import start, catalog, cart, payment, orders, promo
+from .handlers import onboarding
 from .handlers.admin import main as admin_main
 from .handlers.admin import products, orders_admin, users_admin, promos_admin, broadcast_admin
+from .handlers.admin import settings_admin
 from .webhook_handler import setup_webhook_routes
 from .database import AsyncSessionFactory
 from .models import Admin, User
+from .services.settings_service import load_all_settings
+from .utils.backup import backup_scheduler
 from sqlalchemy import select
 
 logging.basicConfig(
@@ -69,6 +73,7 @@ async def main():
     dp.message.middleware(UserMiddleware())
     dp.callback_query.middleware(UserMiddleware())
 
+    dp.include_router(onboarding.router)
     dp.include_router(start.router)
     dp.include_router(catalog.router)
     dp.include_router(cart.router)
@@ -81,9 +86,14 @@ async def main():
     dp.include_router(users_admin.router)
     dp.include_router(promos_admin.router)
     dp.include_router(broadcast_admin.router)
+    dp.include_router(settings_admin.router)
 
     await create_tables()
     await setup_initial_admins()
+
+    async with AsyncSessionFactory() as session:
+        await load_all_settings(session)
+        logger.info("Настройки загружены из БД")
 
     aiohttp_app = web.Application()
     aiohttp_app["bot"] = bot
@@ -98,9 +108,16 @@ async def main():
     me = await bot.get_me()
     logger.info(f"Бот @{me.username} запущен")
 
+    from .services.settings_service import get_cached
+    backup_hours = int(get_cached("backup_interval") or "6")
+    backup_task = asyncio.create_task(
+        backup_scheduler(settings.database_url, interval_hours=backup_hours)
+    )
+
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
+        backup_task.cancel()
         await runner.cleanup()
         await bot.session.close()
 

@@ -4,16 +4,43 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 def main_menu_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🛍 Каталог", callback_data="catalog"))
     builder.row(
-        InlineKeyboardButton(text="🛒 Корзина", callback_data="cart"),
-        InlineKeyboardButton(text="📦 Заказы", callback_data="my_orders"),
+        InlineKeyboardButton(text="Каталог", callback_data="catalog"),
+        InlineKeyboardButton(text="Корзина", callback_data="cart"),
     )
     builder.row(
-        InlineKeyboardButton(text="🔖 Промокод", callback_data="promo"),
-        InlineKeyboardButton(text="💬 Поддержка", callback_data="support"),
+        InlineKeyboardButton(text="Заказы", callback_data="my_orders"),
+        InlineKeyboardButton(text="Профиль", callback_data="profile"),
     )
-    builder.row(InlineKeyboardButton(text="👤 Профиль", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text="Поддержка", callback_data="support"))
+    return builder.as_markup()
+
+
+def terms_kb(pp_url: str, tos_url: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📄 Соглашение", url=tos_url),
+        InlineKeyboardButton(text="🔒 Конфиденц.", url=pp_url),
+    )
+    builder.row(InlineKeyboardButton(text="✅ Принимаю и продолжаю", callback_data="accept_terms"))
+    return builder.as_markup()
+
+
+def captcha_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔄 Новая картинка", callback_data="refresh_captcha"))
+    return builder.as_markup()
+
+
+def channel_kb(channel: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    channel_url = (
+        f"https://t.me/{channel.lstrip('@')}"
+        if channel.startswith("@")
+        else f"https://t.me/c/{str(channel).lstrip('-100')}"
+    )
+    builder.row(InlineKeyboardButton(text="📢 Вступить в канал", url=channel_url))
+    builder.row(InlineKeyboardButton(text="✅ Проверить подписку", callback_data="check_channel"))
     return builder.as_markup()
 
 
@@ -47,16 +74,17 @@ def cart_kb(has_items: bool) -> InlineKeyboardMarkup:
 def payment_method_kb(order_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="₿ CryptoBot", callback_data=f"pay_crypto_{order_id}"))
-    builder.row(InlineKeyboardButton(text="💳 RollyPay (скоро)", callback_data="pay_rollypay_soon"))
-    builder.row(InlineKeyboardButton(text="✕ Отменить заказ", callback_data=f"cancel_order_{order_id}"))
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data=f"cancel_order_{order_id}"))
     return builder.as_markup()
 
 
 def payment_link_kb(pay_url: str, order_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💳 Оплатить", url=pay_url))
-    builder.row(InlineKeyboardButton(text="🔄 Проверить", callback_data=f"check_payment_{order_id}"))
-    builder.row(InlineKeyboardButton(text="✕ Отменить", callback_data=f"cancel_order_{order_id}"))
+    builder.row(InlineKeyboardButton(text="Оплатить", url=pay_url))
+    builder.row(
+        InlineKeyboardButton(text="Проверить", callback_data=f"check_payment_{order_id}"),
+        InlineKeyboardButton(text="Отмена", callback_data=f"cancel_order_{order_id}"),
+    )
     return builder.as_markup()
 
 

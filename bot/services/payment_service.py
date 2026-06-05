@@ -29,7 +29,12 @@ async def create_cryptobot_invoice(session: AsyncSession, order: Order) -> Payme
         "expires_in": 3600,
     }
 
-    headers = {"Crypto-Pay-API-Token": settings.cryptobot_token}
+    from ..services.settings_service import get_cached, get_setting
+    token = get_cached("cryptobot_token") or settings.cryptobot_token
+    if not token:
+        return None
+
+    headers = {"Crypto-Pay-API-Token": token}
 
     try:
         async with aiohttp.ClientSession() as http:
@@ -65,7 +70,9 @@ async def create_cryptobot_invoice(session: AsyncSession, order: Order) -> Payme
 
 async def check_cryptobot_invoice(invoice_id: str) -> str:
     """Проверяет статус инвойса через CryptoBot API. Возвращает: active | paid | expired | cancelled"""
-    headers = {"Crypto-Pay-API-Token": settings.cryptobot_token}
+    from ..services.settings_service import get_cached
+    token = get_cached("cryptobot_token") or settings.cryptobot_token
+    headers = {"Crypto-Pay-API-Token": token}
     params = {"invoice_ids": invoice_id}
 
     try:

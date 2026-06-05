@@ -25,11 +25,13 @@ async def cryptobot_webhook(request: web.Request) -> web.Response:
         body = await request.read()
         signature = request.headers.get("crypto-pay-api-signature", "")
 
-        if not settings.cryptobot_token:
+        from .services.settings_service import get_cached
+        token = get_cached("cryptobot_token") or settings.cryptobot_token
+        if not token:
             logger.error("CRYPTOBOT_TOKEN не задан — webhook отклонён")
             return web.Response(status=503, text="Service not configured")
 
-        if not verify_cryptobot_signature(body, settings.cryptobot_token, signature):
+        if not verify_cryptobot_signature(body, token, signature):
             logger.warning("CryptoBot: неверная подпись webhook")
             return web.Response(status=401, text="Invalid signature")
 
