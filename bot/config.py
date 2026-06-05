@@ -1,5 +1,8 @@
 import os
+import logging
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -21,7 +24,16 @@ class Settings(BaseSettings):
     def admin_list(self) -> list[int]:
         if not self.admin_ids:
             return []
-        return [int(x.strip()) for x in self.admin_ids.split(",") if x.strip()]
+        result = []
+        for x in self.admin_ids.split(","):
+            x = x.strip()
+            if not x:
+                continue
+            try:
+                result.append(int(x))
+            except ValueError:
+                logger.warning(f"Некорректный admin_id в ADMIN_IDS: {x!r} — пропускаем")
+        return result
 
     @property
     def cryptobot_api_url(self) -> str:

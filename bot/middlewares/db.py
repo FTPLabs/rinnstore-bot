@@ -2,6 +2,9 @@ from typing import Callable, Any, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 from ..database import AsyncSessionFactory
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DbSessionMiddleware(BaseMiddleware):
@@ -13,4 +16,8 @@ class DbSessionMiddleware(BaseMiddleware):
     ) -> Any:
         async with AsyncSessionFactory() as session:
             data["session"] = session
-            return await handler(event, data)
+            try:
+                return await handler(event, data)
+            except Exception:
+                await session.rollback()
+                raise

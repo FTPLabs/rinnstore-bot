@@ -6,6 +6,7 @@ from ...models import User, Order
 from ...keyboards.admin import admin_orders_kb, admin_order_detail_kb
 from ...services.admin_service import is_admin, get_orders_paginated, log_action
 from ...services.order_service import deliver_order, cancel_order, get_order
+from ...utils.helpers import parse_callback_int
 from ...utils.emoji import (
     ORDERS, KEY, OK, FAIL, BACK, CLOCK, STATS, BAG, TAG, plain
 )
@@ -40,7 +41,9 @@ async def cb_admin_orders(call: CallbackQuery, session: AsyncSession, user: User
 async def cb_admin_orders_page(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    page = int(call.data.split("_")[3])
+    page = parse_callback_int(call.data, 3)
+    if page is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     orders = await get_orders_paginated(session, page * PAGE_SIZE, PAGE_SIZE)
     if not orders and page > 0:
         await call.answer("Больше заказов нет", show_alert=True)
@@ -57,7 +60,9 @@ async def cb_admin_orders_page(call: CallbackQuery, session: AsyncSession, user:
 async def cb_admin_order_detail(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    order_id = int(call.data.split("_")[2])
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     order = await get_order(session, order_id)
     if not order:
         return await call.answer("Заказ не найден", show_alert=True)
@@ -100,7 +105,9 @@ async def cb_admin_order_detail(call: CallbackQuery, session: AsyncSession, user
 async def cb_admin_deliver(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    order_id = int(call.data.split("_")[2])
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     delivered = await deliver_order(session, order_id)
     await log_action(session, user.id, "manual_deliver", "order", order_id)
     await call.answer(f"✅ Выдано {len(delivered)} товаров", show_alert=True)
@@ -112,7 +119,9 @@ async def cb_admin_deliver(call: CallbackQuery, session: AsyncSession, user: Use
 async def cb_admin_cancel_order(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    order_id = int(call.data.split("_")[3])
+    order_id = parse_callback_int(call.data, 3)
+    if order_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     await cancel_order(session, order_id)
     await log_action(session, user.id, "cancel_order", "order", order_id)
     await call.answer(f"❌ Заказ #{order_id} отменён", show_alert=True)

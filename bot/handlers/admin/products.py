@@ -50,7 +50,10 @@ async def cb_admin_products(call: CallbackQuery, session: AsyncSession, user: Us
 async def cb_admin_product_detail(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    product_id = int(call.data.split("_")[2])
+    from ...utils.helpers import parse_callback_int
+    product_id = parse_callback_int(call.data, 2)
+    if product_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     result = await session.execute(select(Product).where(Product.id == product_id))
     product = result.scalar_one_or_none()
     if not product:
@@ -82,7 +85,9 @@ async def cb_admin_product_detail(call: CallbackQuery, session: AsyncSession, us
 async def cb_toggle_product(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    product_id = int(call.data.split("_")[3])
+    product_id = parse_callback_int(call.data, 3)
+    if product_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     new_status = await toggle_product(session, product_id)
     await log_action(session, user.id, "toggle_product", "product", product_id, {"active": new_status})
     status_text = f"{plain(OK)} включён" if new_status else f"{plain(FAIL)} отключён"
@@ -95,7 +100,10 @@ async def cb_toggle_product(call: CallbackQuery, session: AsyncSession, user: Us
 async def cb_admin_stock(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    product_id = int(call.data.split("_")[2])
+    from ...utils.helpers import parse_callback_int
+    product_id = parse_callback_int(call.data, 2)
+    if product_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     stock = await get_stock_for_product(session, product_id)
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardButton
@@ -120,7 +128,9 @@ async def cb_admin_stock(call: CallbackQuery, session: AsyncSession, user: User)
 async def cb_admin_add_keys_start(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    product_id = int(call.data.split("_")[3])
+    product_id = parse_callback_int(call.data, 3)
+    if product_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     await state.set_state(ProductStates.waiting_keys)
     await state.update_data(keys_product_id=product_id)
     await call.message.edit_text(
@@ -178,7 +188,9 @@ async def cb_admin_add_product(call: CallbackQuery, session: AsyncSession, user:
 
 @router.callback_query(F.data.startswith("select_cat_"), ProductStates.waiting_product_category)
 async def cb_select_category(call: CallbackQuery, state: FSMContext):
-    cat_id = int(call.data.split("_")[2])
+    cat_id = parse_callback_int(call.data, 2)
+    if cat_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     await state.update_data(product_category_id=cat_id)
     await state.set_state(ProductStates.waiting_product_name)
     await call.message.edit_text(

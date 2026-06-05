@@ -11,6 +11,7 @@ from .config import settings
 from .database import engine, Base
 from .middlewares.db import DbSessionMiddleware
 from .middlewares.auth import UserMiddleware
+from .middlewares.throttling import ThrottlingMiddleware
 from .handlers import start, catalog, cart, payment, orders, promo
 from .handlers import onboarding
 from .handlers.admin import main as admin_main
@@ -49,13 +50,13 @@ async def setup_initial_admins():
                 admin = Admin(user_id=admin_id, role="superadmin")
                 session.add(admin)
                 await session.commit()
-                logger.info(f"Суперадмин: {admin_id}")
+                logger.info(f"Суперадмин зарегистрирован: {admin_id}")
 
 
 async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("Таблицы созданы/проверены")
+    logger.info("Таблицы и индексы созданы/проверены")
 
 
 async def main():
@@ -69,7 +70,10 @@ async def main():
     storage = RedisStorage.from_url(settings.redis_url)
     dp = Dispatcher(storage=storage)
 
+    # Middleware (порядок важен: db → throttling → auth)
     dp.update.middleware(DbSessionMiddleware())
+    dp.message.middleware(ThrottlingMiddleware(rate_limit=0.5))
+    dp.callback_query.middleware(ThrottlingMiddleware(rate_limit=0.3))
     dp.message.middleware(UserMiddleware())
     dp.callback_query.middleware(UserMiddleware())
 
@@ -103,13 +107,18 @@ async def main():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", settings.port)
     await site.start()
-    logger.info(f"Webhook-сервер на порту {settings.port}")
+    logger.info(f"Webhook-сервер запущен на порту {settings.port}")
 
     me = await bot.get_me()
-    logger.info(f"Бот @{me.username} запущен")
+    logger.info(f"Бот @{me.username} запущен и готов к работе")
 
     from .services.settings_service import get_cached
-    backup_hours = int(get_cached("backup_interval") or "6")
+    try:
+        backup_hours = int(get_cached("backup_interval") or "6")
+    except (ValueError, TypeError):
+        backup_hours = 6
+        logger.warning("Некорректное значение backup_interval, используем 6ч")
+
     backup_task = asyncio.create_task(
         backup_scheduler(settings.database_url, interval_hours=backup_hours)
     )
@@ -118,8 +127,13 @@ async def main():
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         backup_task.cancel()
+        try:
+            await backup_task
+        except asyncio.CancelledError:
+            pass
         await runner.cleanup()
         await bot.session.close()
+        logger.info("Бот остановлен")
 
 
 if __name__ == "__main__":

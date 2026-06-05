@@ -8,6 +8,7 @@ from sqlalchemy import select
 from ...models import User, PromoCode
 from ...keyboards.admin import admin_promos_kb, admin_promo_detail_kb, cancel_kb
 from ...services.admin_service import is_admin, get_all_promos, create_promo, toggle_promo, log_action
+from ...utils.helpers import parse_callback_int
 from ...utils.emoji import (
     PROMO, ADD, OK, FAIL, BACK, STATS, TAG
 )
@@ -40,7 +41,9 @@ async def cb_admin_promos(call: CallbackQuery, session: AsyncSession, user: User
 async def cb_admin_promo_detail(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    promo_id = int(call.data.split("_")[2])
+    promo_id = parse_callback_int(call.data, 2)
+    if promo_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     result = await session.execute(select(PromoCode).where(PromoCode.id == promo_id))
     promo = result.scalar_one_or_none()
     if not promo:
@@ -70,7 +73,9 @@ async def cb_admin_promo_detail(call: CallbackQuery, session: AsyncSession, user
 async def cb_toggle_promo(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    promo_id = int(call.data.split("_")[3])
+    promo_id = parse_callback_int(call.data, 3)
+    if promo_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     new_status = await toggle_promo(session, promo_id)
     await log_action(session, user.id, "toggle_promo", "promo", promo_id, {"active": new_status})
     await call.answer(f"Промокод {'активирован' if new_status else 'деактивирован'}", show_alert=True)

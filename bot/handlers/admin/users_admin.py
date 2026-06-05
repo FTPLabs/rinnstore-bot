@@ -10,6 +10,7 @@ from ...services.admin_service import (
     is_admin, get_users_paginated, toggle_user_ban, log_action, get_orders_paginated
 )
 from ...services.order_service import get_user_orders
+from ...utils.helpers import parse_callback_int
 from ...utils.emoji import (
     USERS, SHIELD, BANNED, OK, FAIL, BACK, STATS, ORDERS, PROFILE, plain
 )
@@ -51,7 +52,9 @@ async def cb_admin_users(call: CallbackQuery, session: AsyncSession, user: User)
 async def cb_admin_user_detail(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    target_id = int(call.data.split("_")[2])
+    target_id = parse_callback_int(call.data, 2)
+    if target_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     result = await session.execute(select(User).where(User.id == target_id))
     target = result.scalar_one_or_none()
     if not target:
@@ -80,7 +83,9 @@ async def cb_admin_user_detail(call: CallbackQuery, session: AsyncSession, user:
 async def cb_admin_ban(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    target_id = int(call.data.split("_")[2])
+    target_id = parse_callback_int(call.data, 2)
+    if target_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     new_banned = await toggle_user_ban(session, target_id)
     await log_action(session, user.id, "toggle_ban", "user", target_id, {"banned": new_banned})
     status = f"{plain(BANNED)} заблокирован" if new_banned else f"{plain(OK)} разблокирован"
@@ -93,7 +98,9 @@ async def cb_admin_ban(call: CallbackQuery, session: AsyncSession, user: User):
 async def cb_admin_user_orders(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    target_id = int(call.data.split("_")[3])
+    target_id = parse_callback_int(call.data, 3)
+    if target_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
     orders = await get_user_orders(session, target_id, limit=20)
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder

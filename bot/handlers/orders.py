@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import User
 from ..keyboards.user import orders_kb, order_detail_kb, back_to_menu_kb
 from ..services.order_service import get_user_orders, get_order, deliver_order
+from ..utils.helpers import parse_callback_int
 from ..utils.emoji import KEY, OK, FAIL
 
 router = Router()
@@ -34,9 +35,12 @@ async def cb_my_orders(call: CallbackQuery, session: AsyncSession, user: User):
 
 @router.callback_query(F.data.regexp(r"^order_\d+$"))
 async def cb_order_detail(call: CallbackQuery, session: AsyncSession, user: User):
-    order_id = int(call.data.split("_")[1])
-    order = await get_order(session, order_id)
+    order_id = parse_callback_int(call.data, 1)
+    if order_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
 
+    order = await get_order(session, order_id)
     if not order or order.user_id != user.id:
         await call.answer("Заказ не найден", show_alert=True)
         return
@@ -60,9 +64,12 @@ async def cb_order_detail(call: CallbackQuery, session: AsyncSession, user: User
 
 @router.callback_query(F.data.startswith("get_items_"))
 async def cb_get_items(call: CallbackQuery, session: AsyncSession, user: User):
-    order_id = int(call.data.split("_")[2])
-    order = await get_order(session, order_id)
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
 
+    order = await get_order(session, order_id)
     if not order or order.user_id != user.id:
         await call.answer("Заказ не найден", show_alert=True)
         return

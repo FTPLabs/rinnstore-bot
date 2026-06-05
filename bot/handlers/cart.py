@@ -7,6 +7,7 @@ from ..keyboards.user import cart_kb, payment_method_kb, back_to_menu_kb
 from ..services.catalog_service import get_product, get_stock_count
 from ..services.cart_service import CartService
 from ..services.order_service import create_order
+from ..utils.helpers import parse_callback_int
 
 router = Router()
 
@@ -23,7 +24,11 @@ def format_cart(cart: CartService) -> str:
 
 @router.callback_query(F.data.startswith("add_cart_"))
 async def cb_add_to_cart(call: CallbackQuery, session: AsyncSession, state: FSMContext):
-    product_id = int(call.data.split("_")[2])
+    product_id = parse_callback_int(call.data, 2)
+    if product_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
+
     product = await get_product(session, product_id)
     if not product or not product.is_active:
         await call.answer("Товар недоступен", show_alert=True)
@@ -48,7 +53,11 @@ async def cb_add_to_cart(call: CallbackQuery, session: AsyncSession, state: FSMC
 
 @router.callback_query(F.data.startswith("rem_cart_"))
 async def cb_remove_from_cart(call: CallbackQuery, state: FSMContext):
-    product_id = int(call.data.split("_")[2])
+    product_id = parse_callback_int(call.data, 2)
+    if product_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
+
     data = await state.get_data()
     cart = CartService(data)
     cart.remove(product_id)
@@ -96,7 +105,11 @@ async def cb_checkout(call: CallbackQuery, session: AsyncSession, state: FSMCont
     data.pop("promo_code", None)
     await state.set_data(data)
 
-    discount_text = f"\nСкидка: <b>{order.discount_amount} ₽</b>" if order.discount_amount and float(order.discount_amount) > 0 else ""
+    discount_text = (
+        f"\nСкидка: <b>{order.discount_amount} ₽</b>"
+        if order.discount_amount and float(order.discount_amount) > 0
+        else ""
+    )
     text = (
         f"<b>Заказ #{order.id}</b>\n\n"
         f"Сумма: <b>{order.total_amount} ₽</b>{discount_text}\n\n"

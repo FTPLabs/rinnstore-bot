@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Optional
 from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, ForeignKey, Integer,
-    Numeric, String, Text, func, JSON
+    Numeric, String, Text, func, JSON, Index
 )
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -11,6 +11,9 @@ from .database import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_referral_code", "referral_code"),
+    )
 
     id = Column(BigInteger, primary_key=True)
     username = Column(String(255))
@@ -75,6 +78,11 @@ class Product(Base):
 
 class ProductItem(Base):
     __tablename__ = "product_items"
+    __table_args__ = (
+        # Критичный индекс: используется в deliver_order для поиска доступных товаров
+        Index("ix_product_items_available", "product_id", "is_sold", "is_reserved"),
+        Index("ix_product_items_order", "order_id"),
+    )
 
     id = Column(Integer, primary_key=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
@@ -91,6 +99,10 @@ class ProductItem(Base):
 
 class Order(Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        Index("ix_orders_user_id", "user_id"),
+        Index("ix_orders_status", "status"),
+    )
 
     id = Column(Integer, primary_key=True)
     user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)

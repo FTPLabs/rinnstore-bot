@@ -8,6 +8,7 @@ from ..services.payment_service import (
     check_cryptobot_invoice, mark_payment_paid
 )
 from ..services.order_service import get_order, deliver_order, cancel_order
+from ..utils.helpers import parse_callback_int
 from ..utils.emoji import KEY, OK, FAIL
 
 router = Router()
@@ -15,9 +16,12 @@ router = Router()
 
 @router.callback_query(F.data.startswith("pay_crypto_"))
 async def cb_pay_crypto(call: CallbackQuery, session: AsyncSession, user: User):
-    order_id = int(call.data.split("_")[2])
-    order = await get_order(session, order_id)
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
 
+    order = await get_order(session, order_id)
     if not order or order.user_id != user.id:
         await call.answer("Заказ не найден", show_alert=True)
         return
@@ -59,9 +63,12 @@ async def cb_rollypay_soon(call: CallbackQuery):
 
 @router.callback_query(F.data.startswith("check_payment_"))
 async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: User):
-    order_id = int(call.data.split("_")[2])
-    order = await get_order(session, order_id)
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
 
+    order = await get_order(session, order_id)
     if not order or order.user_id != user.id:
         await call.answer("Заказ не найден", show_alert=True)
         return
@@ -96,15 +103,20 @@ async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: Use
         await call.answer("Время оплаты истекло. Создайте новый заказ.", show_alert=True)
     elif status == "active":
         await call.answer("Оплата ещё не поступила.", show_alert=True)
+    elif status == "error":
+        await call.answer("Ошибка проверки платежа. Попробуйте позже.", show_alert=True)
     else:
         await call.answer(f"Статус: {status}", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("cancel_order_"))
 async def cb_cancel_order(call: CallbackQuery, session: AsyncSession, user: User):
-    order_id = int(call.data.split("_")[2])
-    order = await get_order(session, order_id)
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
 
+    order = await get_order(session, order_id)
     if not order or order.user_id != user.id:
         await call.answer("Заказ не найден", show_alert=True)
         return

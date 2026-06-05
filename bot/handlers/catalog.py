@@ -9,6 +9,7 @@ from ..services.catalog_service import (
     get_products_in_category, get_product,
     get_stock_count, get_product_category_id
 )
+from ..utils.helpers import parse_callback_int
 from ..utils.emoji import plain, BACK, OK, FAIL, STAR
 
 router = Router()
@@ -34,7 +35,11 @@ async def cb_catalog(call: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data.startswith("cat_") & ~F.data.startswith("cat_back_"))
 async def cb_category(call: CallbackQuery, session: AsyncSession):
-    cat_id = int(call.data.split("_")[1])
+    cat_id = parse_callback_int(call.data, 1)
+    if cat_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
+
     category = await get_category(session, cat_id)
     if not category:
         await call.answer("Категория не найдена", show_alert=True)
@@ -70,7 +75,11 @@ async def cb_category(call: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data.startswith("product_"))
 async def cb_product(call: CallbackQuery, session: AsyncSession):
-    product_id = int(call.data.split("_")[1])
+    product_id = parse_callback_int(call.data, 1)
+    if product_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
+
     product = await get_product(session, product_id)
     if not product:
         await call.answer("Товар не найден", show_alert=True)
@@ -91,7 +100,12 @@ async def cb_product(call: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data.startswith("cat_back_"))
 async def cb_back_to_category(call: CallbackQuery, session: AsyncSession):
-    product_id = int(call.data.split("_")[2])
+    product_id = parse_callback_int(call.data, 2)
+    if product_id is None:
+        call.data = "catalog"
+        await cb_catalog(call, session)
+        return
+
     cat_id = await get_product_category_id(session, product_id)
     if cat_id:
         call.data = f"cat_{cat_id}"

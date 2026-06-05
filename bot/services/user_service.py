@@ -1,8 +1,11 @@
 import random
 import string
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ..models import User
+
+logger = logging.getLogger(__name__)
 
 
 def generate_referral_code() -> str:
@@ -14,23 +17,23 @@ async def get_or_create_user(session: AsyncSession, tg_user) -> User:
     user = result.scalar_one_or_none()
 
     if user is None:
-        code = generate_referral_code()
-        for _ in range(5):
-            exists = await session.execute(select(User.id).where(User.referral_code == code))
-            if not exists.scalar_one_or_none():
-                break
+        try:
             code = generate_referral_code()
-
-        user = User(
-            id=tg_user.id,
-            username=tg_user.username,
-            first_name=tg_user.first_name,
-            last_name=tg_user.last_name,
-            language_code=getattr(tg_user, "language_code", "ru"),
-            referral_code=code,
-        )
-        session.add(user)
-        await session.commit()
+            user = User(
+                id=tg_user.id,
+                username=tg_user.username,
+                first_name=tg_user.first_name,
+                last_name=tg_user.last_name,
+                language_code=getattr(tg_user, "language_code", "ru"),
+                referral_code=code,
+            )
+            session.add(user)
+            await session.commit()
+        except Exception:
+            # Race condition: другой воркер уже создал пользователя
+            await session.rollback()
+            result = await session.execute(select(User).where(User.id == tg_user.id))
+            user = result.scalar_one()
     else:
         changed = (
             user.username != tg_user.username
@@ -42,6 +45,7 @@ async def get_or_create_user(session: AsyncSession, tg_user) -> User:
             user.first_name = tg_user.first_name
             user.last_name = tg_user.last_name
             await session.commit()
+
     return user
 
 

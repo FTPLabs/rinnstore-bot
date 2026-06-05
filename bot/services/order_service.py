@@ -1,8 +1,11 @@
+import logging
 from decimal import Decimal
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, or_
 from ..models import Order, OrderItem, Product, ProductItem, DeliveredItem, PromoCode, User
+
+logger = logging.getLogger(__name__)
 
 
 async def create_order(
@@ -45,7 +48,14 @@ async def create_order(
             )
             if updated.scalar_one_or_none():
                 if promo.discount_type == "percent":
-                    discount = total * promo.discount_value / 100
+                    pct = promo.discount_value
+                    # Защита от некорректных значений процента
+                    if Decimal("0") < pct <= Decimal("100"):
+                        discount = total * pct / 100
+                    else:
+                        logger.warning(
+                            f"Промокод {promo.code}: некорректный процент {pct}, скидка не применена"
+                        )
                 else:
                     discount = min(promo.discount_value, total)
                 promo_id = promo.id
@@ -153,7 +163,10 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
                 delivered_list.append({"data": pi.data, "product_item_id": pi.id})
             else:
                 out_of_stock = True
-                delivered_list.append({"data": "⚠️ Нет на складе. Напишите в поддержку.", "product_item_id": None})
+                delivered_list.append({
+                    "data": "⚠️ Нет на складе. Напишите в поддержку.",
+                    "product_item_id": None
+                })
 
     order.status = "partial" if out_of_stock else "delivered"
 
