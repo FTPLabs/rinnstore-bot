@@ -1,8 +1,8 @@
 from decimal import Decimal
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
-from ..models import Order, OrderItem, Product, ProductItem, DeliveredItem, PromoCode
+from sqlalchemy import select, update, or_
+from ..models import Order, OrderItem, Product, ProductItem, DeliveredItem, PromoCode, User
 
 
 async def create_order(
@@ -23,17 +23,32 @@ async def create_order(
             select(PromoCode).where(
                 PromoCode.code == promo_code.upper(),
                 PromoCode.is_active == True,
+                or_(
+                    PromoCode.expires_at == None,
+                    PromoCode.expires_at > datetime.now(timezone.utc),
+                ),
             )
         )
         promo = result.scalar_one_or_none()
-        if promo and (promo.max_uses is None or promo.used_count < promo.max_uses):
-            if total >= (promo.min_order_amount or Decimal("0")):
+        if promo and total >= (promo.min_order_amount or Decimal("0")):
+            updated = await session.execute(
+                update(PromoCode)
+                .where(
+                    PromoCode.id == promo.id,
+                    or_(
+                        PromoCode.max_uses == None,
+                        PromoCode.used_count < PromoCode.max_uses,
+                    ),
+                )
+                .values(used_count=PromoCode.used_count + 1)
+                .returning(PromoCode.id)
+            )
+            if updated.scalar_one_or_none():
                 if promo.discount_type == "percent":
                     discount = total * promo.discount_value / 100
                 else:
                     discount = min(promo.discount_value, total)
                 promo_id = promo.id
-                promo.used_count += 1
 
     order = Order(
         user_id=user_id,
@@ -90,11 +105,11 @@ async def cancel_order(session: AsyncSession, order_id: int) -> None:
 
 async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
     """
-    Выдаёт товары по заказу. Возвращает список выданных данных.
-    Идемпотентно: если уже выдавалось, вернёт уже выданное.
+    Идемпотентная выдача товаров.
+    with_for_update на Order исключает гонку webhook + ручная проверка.
     """
     result = await session.execute(
-        select(Order).where(Order.id == order_id)
+        select(Order).where(Order.id == order_id).with_for_update()
     )
     order = result.scalar_one_or_none()
     if not order:
@@ -113,6 +128,7 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
         return already_delivered
 
     delivered_list = []
+    out_of_stock = False
     for order_item in order.items:
         for _ in range(order_item.quantity):
             result = await session.execute(
@@ -128,7 +144,6 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
                 pi.is_reserved = False
                 pi.sold_at = datetime.now(timezone.utc)
                 pi.order_id = order_id
-
                 delivered = DeliveredItem(
                     order_id=order_id,
                     order_item_id=order_item.id,
@@ -137,8 +152,17 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
                 session.add(delivered)
                 delivered_list.append({"data": pi.data, "product_item_id": pi.id})
             else:
-                delivered_list.append({"data": "⚠️ Товар временно недоступен. Обратитесь в поддержку.", "product_item_id": None})
+                out_of_stock = True
+                delivered_list.append({"data": "⚠️ Нет на складе. Напишите в поддержку.", "product_item_id": None})
 
-    order.status = "delivered"
+    order.status = "partial" if out_of_stock else "delivered"
+
+    if not out_of_stock:
+        await session.execute(
+            update(User)
+            .where(User.id == order.user_id)
+            .values(total_spent=User.total_spent + order.total_amount)
+        )
+
     await session.commit()
     return delivered_list

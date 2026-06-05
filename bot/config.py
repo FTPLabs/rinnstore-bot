@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     telegram_bot_token: str
     database_url: str
+    redis_url: str = "redis://localhost:6379/0"
     cryptobot_token: str = ""
     cryptobot_testnet: bool = False
     rollypay_api_key: str = ""
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     webhook_path: str = "/webhook/bot"
     port: int = 9000
     session_secret: str = ""
+    support_username: str = "support"
 
     @property
     def admin_list(self) -> list[int]:

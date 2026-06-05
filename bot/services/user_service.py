@@ -12,8 +12,15 @@ def generate_referral_code() -> str:
 async def get_or_create_user(session: AsyncSession, tg_user) -> User:
     result = await session.execute(select(User).where(User.id == tg_user.id))
     user = result.scalar_one_or_none()
+
     if user is None:
         code = generate_referral_code()
+        for _ in range(5):
+            exists = await session.execute(select(User.id).where(User.referral_code == code))
+            if not exists.scalar_one_or_none():
+                break
+            code = generate_referral_code()
+
         user = User(
             id=tg_user.id,
             username=tg_user.username,
@@ -25,10 +32,16 @@ async def get_or_create_user(session: AsyncSession, tg_user) -> User:
         session.add(user)
         await session.commit()
     else:
-        user.username = tg_user.username
-        user.first_name = tg_user.first_name
-        user.last_name = tg_user.last_name
-        await session.commit()
+        changed = (
+            user.username != tg_user.username
+            or user.first_name != tg_user.first_name
+            or user.last_name != tg_user.last_name
+        )
+        if changed:
+            user.username = tg_user.username
+            user.first_name = tg_user.first_name
+            user.last_name = tg_user.last_name
+            await session.commit()
     return user
 
 
