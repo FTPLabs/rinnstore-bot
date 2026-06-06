@@ -91,9 +91,15 @@ def products_kb(products: list, cat_id: int, parent_cat_id: int | None = None) -
     return builder.as_markup()
 
 
-def payment_method_kb(order_id: int) -> InlineKeyboardMarkup:
+def payment_method_kb(order_id: int, user_balance: "Decimal | None" = None) -> InlineKeyboardMarkup:
+    from decimal import Decimal
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="₿ CryptoBot", callback_data=f"pay_crypto_{order_id}"))
+    if user_balance is not None and user_balance > Decimal("0"):
+        builder.row(InlineKeyboardButton(
+            text=f"💰 Баланс ({user_balance:.2f} ₽)",
+            callback_data=f"pay_balance_{order_id}"
+        ))
     builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data=f"cancel_order_{order_id}"))
     return builder.as_markup()
 
