@@ -73,8 +73,8 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
         await call.answer("Заказ уже обработан", show_alert=True)
         return
 
-    # Перечитываем пользователя чтобы получить актуальный баланс
-    result = await session.execute(select(User).where(User.id == user.id))
+    # FIX: with_for_update() — блокировка строки, исключает race condition двойного списания
+    result = await session.execute(select(User).where(User.id == user.id).with_for_update())
     db_user = result.scalar_one_or_none()
     if not db_user:
         await call.answer("Ошибка пользователя", show_alert=True)

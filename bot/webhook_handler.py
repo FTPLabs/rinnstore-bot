@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def verify_cryptobot_signature(body: bytes, token: str, signature: str) -> bool:
     secret = hashlib.sha256(token.encode()).digest()
-    expected = hmac.new(secret, body, hashlib.sha256).hexdigest()
+    expected = hmac.HMAC(secret, body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
 
