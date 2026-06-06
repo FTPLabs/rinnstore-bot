@@ -9,16 +9,12 @@ from ..models import (
 
 
 async def is_admin(session: AsyncSession, user_id: int) -> bool:
-    result = await session.execute(
-        select(Admin).where(Admin.user_id == user_id)
-    )
+    result = await session.execute(select(Admin).where(Admin.user_id == user_id))
     return result.scalar_one_or_none() is not None
 
 
 async def get_admin(session: AsyncSession, user_id: int) -> Admin | None:
-    result = await session.execute(
-        select(Admin).where(Admin.user_id == user_id)
-    )
+    result = await session.execute(select(Admin).where(Admin.user_id == user_id))
     return result.scalar_one_or_none()
 
 
@@ -31,12 +27,10 @@ async def get_stats(session: AsyncSession) -> dict:
     total_revenue = (await session.execute(
         select(func.sum(Order.total_amount)).where(Order.status.in_(["paid", "delivered"]))
     )).scalar() or Decimal("0")
-
     total_products = (await session.execute(select(func.count(Product.id)))).scalar()
     total_items = (await session.execute(
         select(func.count(ProductItem.id)).where(ProductItem.is_sold == False, ProductItem.is_reserved == False)
     )).scalar()
-
     return {
         "total_users": total_users,
         "total_orders": total_orders,
@@ -75,12 +69,14 @@ async def create_product(
     name: str,
     description: str,
     price: Decimal,
+    is_unlimited: bool = False,
 ) -> Product:
     product = Product(
         category_id=category_id,
         name=name,
         description=description,
         price=price,
+        is_unlimited=is_unlimited,
     )
     session.add(product)
     await session.commit()
