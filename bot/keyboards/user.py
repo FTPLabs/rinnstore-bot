@@ -6,10 +6,10 @@ def main_menu_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="🛍 Каталог", callback_data="catalog"),
-        InlineKeyboardButton(text="🛒 Корзина", callback_data="cart"),
+        InlineKeyboardButton(text="📋 Мои заказы", callback_data="my_orders"),
     )
     builder.row(
-        InlineKeyboardButton(text="📋 Заказы", callback_data="my_orders"),
+        InlineKeyboardButton(text="🎟 Промокод", callback_data="promo"),
         InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
     )
     builder.row(InlineKeyboardButton(text="💬 Поддержка", callback_data="support"))
@@ -62,25 +62,6 @@ def catalog_kb(categories: list) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def product_kb(product_id: int, stock: int) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    if stock > 0:
-        builder.row(InlineKeyboardButton(text="🛒 В корзину", callback_data=f"add_cart_{product_id}"))
-    else:
-        builder.row(InlineKeyboardButton(text="Нет в наличии", callback_data="no_stock"))
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=f"cat_back_{product_id}"))
-    return builder.as_markup()
-
-
-def cart_kb(has_items: bool) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    if has_items:
-        builder.row(InlineKeyboardButton(text="✅ Оформить", callback_data="checkout"))
-        builder.row(InlineKeyboardButton(text="✕ Очистить", callback_data="clear_cart"))
-    builder.row(InlineKeyboardButton(text="◀️ Меню", callback_data="main_menu"))
-    return builder.as_markup()
-
-
 def payment_method_kb(order_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="₿ CryptoBot", callback_data=f"pay_crypto_{order_id}"))
@@ -92,8 +73,8 @@ def payment_link_kb(pay_url: str, order_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="Оплатить", url=pay_url))
     builder.row(
-        InlineKeyboardButton(text="Проверить", callback_data=f"check_payment_{order_id}"),
-        InlineKeyboardButton(text="Отмена", callback_data=f"cancel_order_{order_id}"),
+        InlineKeyboardButton(text="✅ Проверить", callback_data=f"check_payment_{order_id}"),
+        InlineKeyboardButton(text="✕ Отмена", callback_data=f"cancel_order_{order_id}"),
     )
     return builder.as_markup()
 
