@@ -23,6 +23,7 @@ class User(Base):
     is_banned = Column(Boolean, default=False)
     referral_code = Column(String(32), unique=True)
     referred_by = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    referral_bonus = Column(Numeric(12, 2), default=Decimal("0"))
     balance = Column(Numeric(12, 2), default=Decimal("0"))
     total_spent = Column(Numeric(12, 2), default=Decimal("0"))
     terms_accepted = Column(Boolean, default=False)
@@ -69,6 +70,8 @@ class Product(Base):
     is_active = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
     image_url = Column(Text)
+    discount_percent = Column(Numeric(5, 2), nullable=True)
+    discount_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -79,7 +82,6 @@ class Product(Base):
 class ProductItem(Base):
     __tablename__ = "product_items"
     __table_args__ = (
-        # Критичный индекс: используется в deliver_order для поиска доступных товаров
         Index("ix_product_items_available", "product_id", "is_sold", "is_reserved"),
         Index("ix_product_items_order", "order_id"),
     )
