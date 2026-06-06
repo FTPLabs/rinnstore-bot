@@ -16,7 +16,7 @@ from ...utils.emoji import (
 router = Router()
 
 
-class PromoStates(StatesGroup):
+class AdminPromoStates(StatesGroup):
     waiting_code = State()
     waiting_discount_type = State()
     waiting_discount_value = State()
@@ -24,9 +24,10 @@ class PromoStates(StatesGroup):
 
 
 @router.callback_query(F.data == "admin_promos")
-async def cb_admin_promos(call: CallbackQuery, session: AsyncSession, user: User):
+async def cb_admin_promos(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
+    await state.clear()
     promos = await get_all_promos(session)
     text = (
         f"{PROMO} <b>Промокоды</b>\n"
@@ -87,7 +88,8 @@ async def cb_toggle_promo(call: CallbackQuery, session: AsyncSession, user: User
 async def cb_admin_add_promo(call: CallbackQuery, state: FSMContext, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
-    await state.set_state(PromoStates.waiting_code)
+    await state.clear()
+    await state.set_state(AdminPromoStates.waiting_code)
     await call.message.edit_text(
         f"{ADD} <b>Новый промокод</b>\n\nВведите код (только латиница и цифры):\n\n"
         f"Пример: <code>SALE20</code>",
@@ -97,21 +99,24 @@ async def cb_admin_add_promo(call: CallbackQuery, state: FSMContext, session: As
     await call.answer()
 
 
-@router.message(PromoStates.waiting_code)
-async def process_promo_code_admin(message: Message, state: FSMContext):
+@router.message(AdminPromoStates.waiting_code)
+async def process_promo_code_admin(message: Message, state: FSMContext, session: AsyncSession, user: User):
+    if not await is_admin(session, user.id):
+        return
     code = message.text.strip().upper()
     if not code.replace("-", "").isalnum():
-        await message.answer(f"{FAIL} Код должен содержать только буквы и цифры.")
+        await message.answer(f"{FAIL} Код должен содержать только буквы и цифры.", reply_markup=cancel_kb())
         return
     await state.update_data(promo_code=code)
-    await state.set_state(PromoStates.waiting_discount_type)
+    await state.set_state(AdminPromoStates.waiting_discount_type)
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="% Процент", callback_data="promo_type_percent"),
-        InlineKeyboardButton(text="₽ Фиксированная", callback_data="promo_type_fixed"),
+        InlineKeyboardButton(text="% Процент", callback_data="apromo_type_percent"),
+        InlineKeyboardButton(text="₽ Фиксированная", callback_data="apromo_type_fixed"),
     )
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_cancel_state"))
     await message.answer(
         f"{PROMO} Выберите тип скидки:",
         reply_markup=builder.as_markup(),
@@ -119,11 +124,14 @@ async def process_promo_code_admin(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(F.data.in_({"promo_type_percent", "promo_type_fixed"}), PromoStates.waiting_discount_type)
+@router.callback_query(
+    F.data.in_({"apromo_type_percent", "apromo_type_fixed"}),
+    AdminPromoStates.waiting_discount_type
+)
 async def process_promo_type(call: CallbackQuery, state: FSMContext):
-    dtype = "percent" if call.data == "promo_type_percent" else "fixed"
+    dtype = "percent" if call.data == "apromo_type_percent" else "fixed"
     await state.update_data(discount_type=dtype)
-    await state.set_state(PromoStates.waiting_discount_value)
+    await state.set_state(AdminPromoStates.waiting_discount_value)
     hint = "процентов (1-100)" if dtype == "percent" else "рублей"
     await call.message.edit_text(
         f"💰 Введите размер скидки в {hint}:",
@@ -133,30 +141,63 @@ async def process_promo_type(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.message(PromoStates.waiting_discount_value)
+@router.message(AdminPromoStates.waiting_discount_value)
 async def process_promo_value(message: Message, state: FSMContext):
     try:
-        val = Decimal(message.text.strip())
+        val = Decimal(message.text.strip().replace(",", "."))
         if val <= 0:
             raise ValueError()
     except (InvalidOperation, ValueError):
-        await message.answer(f"{FAIL} Введите число больше 0")
+        await message.answer(f"{FAIL} Введите число больше 0", reply_markup=cancel_kb())
         return
     await state.update_data(discount_value=val)
-    await state.set_state(PromoStates.waiting_max_uses)
+    await state.set_state(AdminPromoStates.waiting_max_uses)
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="♾ Безлимит", callback_data="apromo_unlimited"))
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_cancel_state"))
     await message.answer(
-        "🔢 Максимум использований (введите число или «0» для неограниченного):"
+        "🔢 Максимум использований (введите число или нажмите «Безлимит»):",
+        reply_markup=builder.as_markup()
     )
 
 
-@router.message(PromoStates.waiting_max_uses)
+@router.callback_query(F.data == "apromo_unlimited", AdminPromoStates.waiting_max_uses)
+async def process_promo_unlimited(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    data = await state.get_data()
+    promo = await create_promo(
+        session,
+        code=data["promo_code"],
+        discount_type=data["discount_type"],
+        discount_value=data["discount_value"],
+        max_uses=None,
+    )
+    await log_action(session, user.id, "create_promo", "promo", promo.id)
+    await state.clear()
+    val = f"{promo.discount_value}%" if promo.discount_type == "percent" else f"{promo.discount_value} руб."
+    await call.message.edit_text(
+        f"{OK} <b>Промокод создан!</b>\n\n"
+        f"{PROMO} Код: <code>{promo.code}</code>\n"
+        f"💰 Скидка: <b>{val}</b>\n"
+        f"🔢 Использований: безлимит",
+        parse_mode="HTML"
+    )
+    await call.answer("Промокод создан!")
+
+
+@router.message(AdminPromoStates.waiting_max_uses)
 async def process_promo_max_uses(message: Message, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
         return
     try:
         max_uses = int(message.text.strip())
+        if max_uses < 0:
+            raise ValueError()
     except ValueError:
-        await message.answer(f"{FAIL} Введите целое число")
+        await message.answer(f"{FAIL} Введите целое число >= 0 или нажмите «Безлимит»", reply_markup=cancel_kb())
         return
     data = await state.get_data()
     promo = await create_promo(
@@ -172,6 +213,7 @@ async def process_promo_max_uses(message: Message, session: AsyncSession, user: 
     await message.answer(
         f"{OK} <b>Промокод создан!</b>\n\n"
         f"{PROMO} Код: <code>{promo.code}</code>\n"
-        f"💰 Скидка: <b>{val}</b>",
+        f"💰 Скидка: <b>{val}</b>\n"
+        f"🔢 Макс. использований: {promo.max_uses or 'безлимит'}",
         parse_mode="HTML"
     )
