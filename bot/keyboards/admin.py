@@ -25,6 +25,7 @@ def admin_main_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=f"{plain(BROADCAST)} Рассылка", callback_data="admin_broadcast"),
         InlineKeyboardButton(text=f"{plain(SETTINGS)} Настройки", callback_data="admin_settings"),
     )
+    builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu"))
     return builder.as_markup()
 
 
@@ -40,7 +41,10 @@ def admin_products_kb(products: list) -> InlineKeyboardMarkup:
         text=f"{plain(ADD)} Добавить товар",
         callback_data="admin_add_product"
     ))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"))
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
     return builder.as_markup()
 
 
@@ -49,12 +53,12 @@ def admin_product_detail_kb(product_id: int, is_active: bool) -> InlineKeyboardM
     toggle_text = f"{plain(FAIL)} Отключить" if is_active else f"{plain(OK)} Включить"
     builder.row(
         InlineKeyboardButton(
-            text=f"{plain(EDIT)} Редактировать",
-            callback_data=f"admin_edit_product_{product_id}"
-        ),
-        InlineKeyboardButton(
             text=toggle_text,
             callback_data=f"admin_toggle_product_{product_id}"
+        ),
+        InlineKeyboardButton(
+            text=f"💰 Цена",
+            callback_data=f"admin_change_price_{product_id}"
         ),
     )
     builder.row(
@@ -67,7 +71,20 @@ def admin_product_detail_kb(product_id: int, is_active: bool) -> InlineKeyboardM
             callback_data=f"admin_stock_{product_id}"
         ),
     )
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_products"))
+    builder.row(
+        InlineKeyboardButton(
+            text=f"🏷 Скидка",
+            callback_data=f"admin_set_discount_{product_id}"
+        ),
+        InlineKeyboardButton(
+            text=f"{plain(DELETE)} Удалить",
+            callback_data=f"admin_delete_product_{product_id}"
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_products"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
     return builder.as_markup()
 
 
@@ -87,7 +104,10 @@ def admin_orders_kb(orders: list, page: int = 0) -> InlineKeyboardMarkup:
     nav_row.append(InlineKeyboardButton(text=f"стр. {page+1}", callback_data="noop"))
     nav_row.append(InlineKeyboardButton(text="▶️", callback_data=f"admin_orders_page_{page+1}"))
     builder.row(*nav_row)
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"))
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
     return builder.as_markup()
 
 
@@ -103,7 +123,10 @@ def admin_order_detail_kb(order_id: int, status: str) -> InlineKeyboardMarkup:
             text=f"{plain(FAIL)} Отменить заказ",
             callback_data=f"admin_cancel_order_{order_id}"
         ))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_orders"))
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_orders"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
     return builder.as_markup()
 
 
@@ -119,7 +142,24 @@ def admin_categories_kb(categories: list) -> InlineKeyboardMarkup:
         text=f"{plain(ADD)} Добавить категорию",
         callback_data="admin_add_category"
     ))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"))
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
+    return builder.as_markup()
+
+
+def admin_category_detail_kb(cat_id: int, is_active: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    toggle_text = f"{plain(FAIL)} Скрыть" if is_active else f"{plain(OK)} Показать"
+    builder.row(
+        InlineKeyboardButton(text=toggle_text, callback_data=f"admin_toggle_cat_{cat_id}"),
+        InlineKeyboardButton(text=f"{plain(DELETE)} Удалить", callback_data=f"admin_delete_cat_{cat_id}"),
+    )
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_categories"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
     return builder.as_markup()
 
 
@@ -132,7 +172,10 @@ def admin_users_kb(users: list) -> InlineKeyboardMarkup:
             text=f"{ban_icon} {name} · {u.id}",
             callback_data=f"admin_user_{u.id}"
         ))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"))
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
     return builder.as_markup()
 
 
@@ -144,7 +187,10 @@ def admin_user_detail_kb(user_id: int, is_banned: bool) -> InlineKeyboardMarkup:
         text=f"{plain(ORDERS)} Заказы пользователя",
         callback_data=f"admin_user_orders_{user_id}"
     ))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_users"))
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_users"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
     return builder.as_markup()
 
 
@@ -161,7 +207,10 @@ def admin_promos_kb(promos: list) -> InlineKeyboardMarkup:
         text=f"{plain(ADD)} Создать промокод",
         callback_data="admin_add_promo"
     ))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"))
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
     return builder.as_markup()
 
 
@@ -169,7 +218,10 @@ def admin_promo_detail_kb(promo_id: int, is_active: bool) -> InlineKeyboardMarku
     builder = InlineKeyboardBuilder()
     toggle = f"{plain(FAIL)} Деактивировать" if is_active else f"{plain(OK)} Активировать"
     builder.row(InlineKeyboardButton(text=toggle, callback_data=f"admin_toggle_promo_{promo_id}"))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_promos"))
+    builder.row(
+        InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_promos"),
+        InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
+    )
     return builder.as_markup()
 
 
@@ -184,5 +236,5 @@ def admin_confirm_kb(action: str, entity_id: int) -> InlineKeyboardMarkup:
 
 def cancel_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=f"{plain(FAIL)} Отмена", callback_data="admin_main"))
+    builder.row(InlineKeyboardButton(text=f"{plain(FAIL)} Отмена", callback_data="admin_cancel_state"))
     return builder.as_markup()
