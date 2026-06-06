@@ -297,7 +297,7 @@ async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User):
         f"{product.name} × {qty}\n"
         f"Итого: <b>{order.total_amount} ₽</b>\n\n"
         f"Выберите способ оплаты:",
-        reply_markup=payment_method_kb(order.id),
+        reply_markup=payment_method_kb(order.id, user.balance),
         parse_mode="HTML"
     )
     await call.answer()
