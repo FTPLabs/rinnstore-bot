@@ -1,11 +1,12 @@
 from decimal import Decimal
+from datetime import datetime, timezone
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..keyboards.user import catalog_kb, back_to_menu_kb
+from ..keyboards.user import catalog_kb, back_to_menu_kb, payment_method_kb
 from ..services.catalog_service import (
     get_active_categories, get_category,
     get_products_in_category, get_product,
@@ -14,7 +15,6 @@ from ..services.catalog_service import (
 from ..services.order_service import create_order
 from ..models import User
 from ..utils.helpers import parse_callback_int
-from datetime import datetime, timezone
 
 router = Router()
 
@@ -46,6 +46,7 @@ def _product_text(product, stock: int, qty: int = 1) -> str:
     total_line = ""
     if qty > 1:
         total_line = f"\nИтого за {qty} шт.: <b>{unit_price * qty:.2f} ₽</b>"
+
     return (
         f"<b>{product.name}</b>{desc}\n"
         f"{price_line}\n"
@@ -72,7 +73,7 @@ def _product_kb(product_id: int, stock: int, qty: int = 1) -> object:
                 ))
             builder.row(*qty_buttons)
 
-        buy_text = f"🛒 Купить {qty} шт. · {_get_total_text(product_id, qty)}" if qty > 1 else "🛒 Купить"
+        buy_text = f"🛒 Купить {qty} шт." if qty > 1 else "🛒 Купить"
         builder.row(InlineKeyboardButton(
             text=buy_text,
             callback_data=f"buy_{product_id}_{qty}"
@@ -82,10 +83,6 @@ def _product_kb(product_id: int, stock: int, qty: int = 1) -> object:
     return builder.as_markup()
 
 
-def _get_total_text(product_id: int, qty: int) -> str:
-    return f"{qty} шт."
-
-
 async def _show_product(call: CallbackQuery, session: AsyncSession, product_id: int, qty: int = 1):
     product = await get_product(session, product_id)
     if not product:
@@ -93,7 +90,8 @@ async def _show_product(call: CallbackQuery, session: AsyncSession, product_id: 
         return None, 0
 
     stock = await get_stock_count(session, product_id)
-    if qty > (min(stock, MAX_QTY_BUTTONS) if stock < UNLIMITED_STOCK else MAX_QTY_BUTTONS):
+    max_qty = min(stock, MAX_QTY_BUTTONS) if stock < UNLIMITED_STOCK else MAX_QTY_BUTTONS
+    if qty > max_qty:
         qty = 1
 
     text = _product_text(product, stock, qty)
@@ -112,7 +110,11 @@ async def cb_catalog(call: CallbackQuery, session: AsyncSession):
         await call.message.edit_text("Каталог пуст. Загляните позже.", reply_markup=back_to_menu_kb())
         await call.answer()
         return
-    await call.message.edit_text("<b>Каталог</b>\n\nВыберите категорию:", reply_markup=catalog_kb(categories), parse_mode="HTML")
+    await call.message.edit_text(
+        "<b>Каталог</b>\n\nВыберите категорию:",
+        reply_markup=catalog_kb(categories),
+        parse_mode="HTML"
+    )
     await call.answer()
 
 
@@ -132,7 +134,11 @@ async def cb_category(call: CallbackQuery, session: AsyncSession):
     if not products:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="catalog"))
-        await call.message.edit_text(f"<b>{category.name}</b>\n\nТоваров пока нет.", reply_markup=builder.as_markup(), parse_mode="HTML")
+        await call.message.edit_text(
+            f"<b>{category.name}</b>\n\nТоваров пока нет.",
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
         await call.answer()
         return
 
@@ -150,7 +156,11 @@ async def cb_category(call: CallbackQuery, session: AsyncSession):
             callback_data=f"product_{p.id}"
         ))
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="catalog"))
-    await call.message.edit_text(f"<b>{category.name}</b>", reply_markup=builder.as_markup(), parse_mode="HTML")
+    await call.message.edit_text(
+        f"<b>{category.name}</b>",
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML"
+    )
     await call.answer()
 
 
@@ -211,7 +221,10 @@ async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User, state: 
         product.discount_percent
         and (not product.discount_expires_at or product.discount_expires_at > now)
     )
-    unit_price = float(product.price * (1 - product.discount_percent / 100)) if has_discount else float(product.price)
+    if has_discount:
+        unit_price = float(product.price * (1 - product.discount_percent / 100))
+    else:
+        unit_price = float(product.price)
 
     fsm_data = await state.get_data()
     promo_code = fsm_data.get("promo_code")
@@ -224,19 +237,22 @@ async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User, state: 
         await state.set_data(fsm_data)
 
     discount_text = (
-        f"\nСкидка: <b>-{order.discount_amount} ₽</b>"
+        f"\n🎟 Скидка: <b>-{order.discount_amount} ₽</b>"
         if order.discount_amount and float(order.discount_amount) > 0
         else ""
     )
-    qty_text = f"{qty} шт. × {unit_price:.2f} ₽" if qty > 1 else f"{unit_price:.2f} ₽"
+    if qty > 1:
+        qty_text = f"{qty} шт. × {unit_price:.2f} ₽ = <b>{unit_price * qty:.2f} ₽</b>"
+    else:
+        qty_text = f"<b>{unit_price:.2f} ₽</b>"
+
     text = (
         f"<b>Заказ #{order.id}</b>\n\n"
         f"📦 {product.name}\n"
-        f"🔢 {qty_text}\n"
-        f"💰 Итого: <b>{order.total_amount} ₽</b>{discount_text}\n\n"
+        f"💰 {qty_text}{discount_text}\n\n"
+        f"К оплате: <b>{order.total_amount} ₽</b>\n\n"
         f"Выберите способ оплаты:"
     )
-    from ..keyboards.user import payment_method_kb
     await call.message.edit_text(text, reply_markup=payment_method_kb(order.id), parse_mode="HTML")
     await call.answer()
 
