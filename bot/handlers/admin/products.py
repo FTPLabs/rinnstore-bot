@@ -247,7 +247,7 @@ from decimal import Decimal, InvalidOperation
           await message.answer(f"{plain(OK)} Скидка удалена.")
           return
 
-      await state.update_data(discount_percent=pct)
+      await state.update_data(discount_percent=str(pct))
       await state.set_state(ProductStates.waiting_discount_days)
       await message.answer("⏱ Введите длительность скидки в часах (0 = бессрочно):", reply_markup=cancel_kb())
 
@@ -266,7 +266,7 @@ from decimal import Decimal, InvalidOperation
 
       data = await state.get_data()
       product_id = data.get("discount_product_id")
-      pct = data.get("discount_percent")
+      pct = Decimal(data.get("discount_percent"))
       expires_at = datetime.now(timezone.utc) + timedelta(hours=hours) if hours > 0 else None
 
       await set_product_discount(session, product_id, pct, expires_at)
@@ -429,7 +429,7 @@ from decimal import Decimal, InvalidOperation
       except (InvalidOperation, ValueError):
           await message.answer(f"{FAIL} Введите корректную цену (число > 0):", reply_markup=cancel_kb())
           return
-      await state.update_data(product_price=price)
+      await state.update_data(product_price=str(price))
       await state.set_state(ProductStates.waiting_product_unlimited)
       from aiogram.utils.keyboard import InlineKeyboardBuilder
       from aiogram.types import InlineKeyboardButton
@@ -452,7 +452,7 @@ from decimal import Decimal, InvalidOperation
           category_id=data["product_category_id"],
           name=data["product_name"],
           description=data.get("product_desc", ""),
-          price=data["product_price"],
+          price=Decimal(data["product_price"]),
           is_unlimited=is_unlimited,
       )
       await log_action(session, user.id, "create_product", "product", product.id)
