@@ -76,7 +76,7 @@ class Product(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     category = relationship("Category", back_populates="products")
-    items = relationship("ProductItem", back_populates="product", lazy="dynamic")
+    items = relationship("ProductItem", back_populates="product", lazy="noload")
 
 
 class ProductItem(Base):
@@ -134,7 +134,7 @@ class OrderItem(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     order = relationship("Order", back_populates="items")
-    product = relationship("Product")
+    product = relationship("Product", lazy="selectin")
     delivered = relationship("DeliveredItem", back_populates="order_item", lazy="selectin")
 
 
@@ -149,7 +149,7 @@ class DeliveredItem(Base):
 
     order = relationship("Order", back_populates="delivered_items")
     order_item = relationship("OrderItem", back_populates="delivered")
-    product_item = relationship("ProductItem")
+    product_item = relationship("ProductItem", lazy="selectin")
 
 
 class Payment(Base):
