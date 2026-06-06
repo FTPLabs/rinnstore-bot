@@ -49,13 +49,10 @@ async def create_order(
             if updated.scalar_one_or_none():
                 if promo.discount_type == "percent":
                     pct = promo.discount_value
-                    # Защита от некорректных значений процента
                     if Decimal("0") < pct <= Decimal("100"):
                         discount = total * pct / 100
                     else:
-                        logger.warning(
-                            f"Промокод {promo.code}: некорректный процент {pct}, скидка не применена"
-                        )
+                        logger.warning(f"Промокод {promo.code}: некорректный процент {pct}")
                 else:
                     discount = min(promo.discount_value, total)
                 promo_id = promo.id
@@ -85,9 +82,7 @@ async def create_order(
 
 
 async def get_order(session: AsyncSession, order_id: int) -> Order | None:
-    result = await session.execute(
-        select(Order).where(Order.id == order_id)
-    )
+    result = await session.execute(select(Order).where(Order.id == order_id))
     return result.scalar_one_or_none()
 
 
@@ -114,10 +109,6 @@ async def cancel_order(session: AsyncSession, order_id: int) -> None:
 
 
 async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
-    """
-    Идемпотентная выдача товаров.
-    with_for_update на Order исключает гонку webhook + ручная проверка.
-    """
     result = await session.execute(
         select(Order).where(Order.id == order_id).with_for_update()
     )
@@ -139,34 +130,63 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
 
     delivered_list = []
     out_of_stock = False
+
     for order_item in order.items:
+        prod_result = await session.execute(
+            select(Product).where(Product.id == order_item.product_id)
+        )
+        product = prod_result.scalar_one_or_none()
+        is_unlimited = product.is_unlimited if product else False
+
         for _ in range(order_item.quantity):
-            result = await session.execute(
-                select(ProductItem).where(
-                    ProductItem.product_id == order_item.product_id,
-                    ProductItem.is_sold == False,
-                    ProductItem.is_reserved == False,
-                ).limit(1).with_for_update(skip_locked=True)
-            )
-            pi = result.scalar_one_or_none()
-            if pi:
-                pi.is_sold = True
-                pi.is_reserved = False
-                pi.sold_at = datetime.now(timezone.utc)
-                pi.order_id = order_id
-                delivered = DeliveredItem(
-                    order_id=order_id,
-                    order_item_id=order_item.id,
-                    product_item_id=pi.id,
+            if is_unlimited:
+                result = await session.execute(
+                    select(ProductItem).where(
+                        ProductItem.product_id == order_item.product_id,
+                    ).limit(1)
                 )
-                session.add(delivered)
-                delivered_list.append({"data": pi.data, "product_item_id": pi.id})
+                pi = result.scalar_one_or_none()
+                if pi:
+                    delivered = DeliveredItem(
+                        order_id=order_id,
+                        order_item_id=order_item.id,
+                        product_item_id=pi.id,
+                    )
+                    session.add(delivered)
+                    delivered_list.append({"data": pi.data, "product_item_id": pi.id})
+                else:
+                    out_of_stock = True
+                    delivered_list.append({
+                        "data": "⚠️ Нет на складе. Напишите в поддержку.",
+                        "product_item_id": None
+                    })
             else:
-                out_of_stock = True
-                delivered_list.append({
-                    "data": "⚠️ Нет на складе. Напишите в поддержку.",
-                    "product_item_id": None
-                })
+                result = await session.execute(
+                    select(ProductItem).where(
+                        ProductItem.product_id == order_item.product_id,
+                        ProductItem.is_sold == False,
+                        ProductItem.is_reserved == False,
+                    ).limit(1).with_for_update(skip_locked=True)
+                )
+                pi = result.scalar_one_or_none()
+                if pi:
+                    pi.is_sold = True
+                    pi.is_reserved = False
+                    pi.sold_at = datetime.now(timezone.utc)
+                    pi.order_id = order_id
+                    delivered = DeliveredItem(
+                        order_id=order_id,
+                        order_item_id=order_item.id,
+                        product_item_id=pi.id,
+                    )
+                    session.add(delivered)
+                    delivered_list.append({"data": pi.data, "product_item_id": pi.id})
+                else:
+                    out_of_stock = True
+                    delivered_list.append({
+                        "data": "⚠️ Нет на складе. Напишите в поддержку.",
+                        "product_item_id": None
+                    })
 
     order.status = "partial" if out_of_stock else "delivered"
 
