@@ -150,7 +150,7 @@ async def process_promo_value(message: Message, state: FSMContext):
     except (InvalidOperation, ValueError):
         await message.answer(f"{FAIL} Введите число больше 0", reply_markup=cancel_kb())
         return
-    await state.update_data(discount_value=val)
+    await state.update_data(discount_value=str(val))
     await state.set_state(AdminPromoStates.waiting_max_uses)
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardButton
@@ -172,7 +172,7 @@ async def process_promo_unlimited(call: CallbackQuery, session: AsyncSession, us
         session,
         code=data["promo_code"],
         discount_type=data["discount_type"],
-        discount_value=data["discount_value"],
+        discount_value=Decimal(data["discount_value"]),
         max_uses=None,
     )
     await log_action(session, user.id, "create_promo", "promo", promo.id)
@@ -204,7 +204,7 @@ async def process_promo_max_uses(message: Message, session: AsyncSession, user: 
         session,
         code=data["promo_code"],
         discount_type=data["discount_type"],
-        discount_value=data["discount_value"],
+        discount_value=Decimal(data["discount_value"]),
         max_uses=max_uses if max_uses > 0 else None,
     )
     await log_action(session, user.id, "create_promo", "promo", promo.id)
