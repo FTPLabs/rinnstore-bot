@@ -26,13 +26,23 @@ def profile_kb(ref_code: str, bot_username: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def terms_kb(pp_url: str, tos_url: str) -> InlineKeyboardMarkup:
+def welcome_kb(channel_invite: str, tos_url: str, pp_url: str) -> InlineKeyboardMarkup:
+    """Приветственный экран: подписка на канал + принятие политики в одном месте."""
     builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="📢 Подписаться на канал", url=channel_invite))
     builder.row(
         InlineKeyboardButton(text="📄 Соглашение", url=tos_url),
         InlineKeyboardButton(text="🔒 Конфиденц.", url=pp_url),
     )
-    builder.row(InlineKeyboardButton(text="✅ Принимаю и продолжаю", callback_data="accept_terms"))
+    builder.row(InlineKeyboardButton(text="✅ Принимаю условия", callback_data="accept_terms"))
+    return builder.as_markup()
+
+
+def channel_only_kb(channel_invite: str) -> InlineKeyboardMarkup:
+    """Экран повторной проверки подписки (после капчи)."""
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="📢 Вступить в канал", url=channel_invite))
+    builder.row(InlineKeyboardButton(text="✅ Я подписан", callback_data="check_channel"))
     return builder.as_markup()
 
 
@@ -42,13 +52,21 @@ def captcha_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def channel_kb(channel: str) -> InlineKeyboardMarkup:
+def terms_kb(pp_url: str, tos_url: str) -> InlineKeyboardMarkup:
+    """Устаревшая — оставлена для обратной совместимости."""
     builder = InlineKeyboardBuilder()
-    channel_url = (
-        f"https://t.me/{channel.lstrip('@')}"
-        if channel.startswith("@")
-        else f"https://t.me/c/{str(channel).lstrip('-100')}"
+    builder.row(
+        InlineKeyboardButton(text="📄 Соглашение", url=tos_url),
+        InlineKeyboardButton(text="🔒 Конфиденц.", url=pp_url),
     )
+    builder.row(InlineKeyboardButton(text="✅ Принимаю и продолжаю", callback_data="accept_terms"))
+    return builder.as_markup()
+
+
+def channel_kb(channel: str) -> InlineKeyboardMarkup:
+    """Устаревшая — оставлена для обратной совместимости."""
+    builder = InlineKeyboardBuilder()
+    channel_url = channel if channel.startswith("http") else f"https://t.me/{channel.lstrip('@')}"
     builder.row(InlineKeyboardButton(text="📢 Вступить в канал", url=channel_url))
     builder.row(InlineKeyboardButton(text="✅ Проверить подписку", callback_data="check_channel"))
     return builder.as_markup()
