@@ -1,7 +1,10 @@
+import asyncio
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ...models import User
@@ -10,6 +13,9 @@ from ...services.admin_service import is_admin, log_action
 from ...utils.emoji import BROADCAST, OK, FAIL, STATS, plain
 
 router = Router()
+
+BATCH_SIZE = 25
+BATCH_DELAY = 1.1
 
 
 class BroadcastState(StatesGroup):
@@ -38,8 +44,6 @@ async def process_broadcast_text(message: Message, state: FSMContext):
     text = message.text or message.caption or ""
     await state.update_data(broadcast_text=text)
     await state.set_state(BroadcastState.confirm)
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text=f"{plain(OK)} Отправить всем", callback_data="confirm_broadcast"),
@@ -79,12 +83,15 @@ async def process_confirm_broadcast(
 
     sent = 0
     failed = 0
-    for uid in user_ids:
+    for i, uid in enumerate(user_ids):
         try:
             await bot.send_message(uid, text, parse_mode="HTML")
             sent += 1
         except Exception:
             failed += 1
+
+        if (i + 1) % BATCH_SIZE == 0:
+            await asyncio.sleep(BATCH_DELAY)
 
     await log_action(session, user.id, "broadcast", details={"sent": sent, "failed": failed})
     await call.message.edit_text(
@@ -93,23 +100,3 @@ async def process_confirm_broadcast(
         f"{FAIL} Ошибок: <b>{failed}</b>",
         parse_mode="HTML"
     )
-
-
-@router.callback_query(F.data == "admin_settings")
-async def cb_admin_settings(call: CallbackQuery, session: AsyncSession, user: User):
-    if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
-    from ...utils.emoji import SETTINGS, SHIELD
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=f"{plain(FAIL)} Назад", callback_data="admin_main"))
-    await call.message.edit_text(
-        f"{SETTINGS} <b>Настройки</b>\n"
-        f"{'━' * 16}\n\n"
-        f"{SHIELD} Бот работает в штатном режиме\n\n"
-        f"Для изменения настроек используйте файл .env",
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
-    )
-    await call.answer()
