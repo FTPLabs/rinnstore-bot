@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -20,6 +21,11 @@ router = Router()
 
 class UserSearchState(StatesGroup):
     waiting_user_id = State()
+
+
+class UserBalanceState(StatesGroup):
+    waiting_amount = State()
+    waiting_target_id = State()
 
 
 @router.callback_query(F.data == "admin_users")
@@ -92,6 +98,65 @@ async def cb_admin_ban(call: CallbackQuery, session: AsyncSession, user: User):
     await call.answer(f"Пользователь {status}", show_alert=True)
     call.data = f"admin_user_{target_id}"
     await cb_admin_user_detail(call, session, user)
+
+
+@router.callback_query(F.data.startswith("admin_add_balance_"))
+async def cb_admin_add_balance(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return await call.answer("🚫 Нет доступа", show_alert=True)
+    target_id = parse_callback_int(call.data, 3)
+    if target_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
+    await state.set_state(UserBalanceState.waiting_amount)
+    await state.update_data(balance_target_id=target_id)
+    await call.message.edit_text(
+        f"💰 <b>Начисление баланса пользователю #{target_id}</b>\n\n"
+        f"Введите сумму (можно отрицательную для списания):",
+        reply_markup=cancel_kb(),
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@router.message(UserBalanceState.waiting_amount)
+async def process_balance_amount(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    try:
+        amount = Decimal(message.text.strip().replace(",", "."))
+    except (InvalidOperation, ValueError):
+        await message.answer(f"{plain(FAIL)} Введите корректную сумму (число):", reply_markup=cancel_kb())
+        return
+
+    data = await state.get_data()
+    target_id = data.get("balance_target_id")
+    result = await session.execute(select(User).where(User.id == target_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        await message.answer(f"{plain(FAIL)} Пользователь не найден.")
+        await state.clear()
+        return
+
+    old_balance = target.balance or Decimal("0")
+    target.balance = old_balance + amount
+    if target.balance < Decimal("0"):
+        target.balance = Decimal("0")
+    await session.commit()
+
+    await log_action(session, user.id, "add_balance", "user", target_id, {
+        "amount": str(amount),
+        "old": str(old_balance),
+        "new": str(target.balance)
+    })
+    await state.clear()
+    sign = "+" if amount >= 0 else ""
+    await message.answer(
+        f"{plain(OK)} Баланс пользователя #{target_id} изменён.\n"
+        f"Было: <b>{old_balance:.2f} ₽</b>\n"
+        f"Изменение: <b>{sign}{amount:.2f} ₽</b>\n"
+        f"Стало: <b>{target.balance:.2f} ₽</b>",
+        parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data.startswith("admin_user_orders_"))
