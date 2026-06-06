@@ -75,6 +75,9 @@ async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: Use
 
     if order.status in ("paid", "delivered"):
         delivered = await deliver_order(session, order_id)
+        if not delivered:
+            await call.answer("Товары уже выданы или ошибка выдачи. Напишите в поддержку.", show_alert=True)
+            return
         items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
@@ -93,6 +96,9 @@ async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: Use
     if status == "paid":
         await mark_payment_paid(session, payment)
         delivered = await deliver_order(session, order_id)
+        if not delivered:
+            await call.answer("Ошибка выдачи товара. Напишите в поддержку.", show_alert=True)
+            return
         items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",

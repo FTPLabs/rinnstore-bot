@@ -31,6 +31,7 @@ async def create_backup(database_url: str) -> str | None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     out_file = BACKUP_DIR / f"rinnstore_{timestamp}.json.gz"
 
+    conn = None
     try:
         import asyncpg
         url = database_url.replace("postgresql+asyncpg://", "postgresql://").replace("postgresql+psycopg2://", "postgresql://")
@@ -45,8 +46,6 @@ async def create_backup(database_url: str) -> str | None:
                 logger.warning(f"Backup skip {table}: {e}")
                 dump["tables"][table] = []
 
-        await conn.close()
-
         data = json.dumps(dump, cls=_Encoder, ensure_ascii=False, indent=2).encode("utf-8")
         with gzip.open(out_file, "wb") as f:
             f.write(data)
@@ -59,6 +58,12 @@ async def create_backup(database_url: str) -> str | None:
     except Exception as e:
         logger.error(f"Backup error: {e}")
         return None
+    finally:
+        if conn is not None:
+            try:
+                await conn.close()
+            except Exception:
+                pass
 
 
 def _cleanup_old_backups(keep: int = 7) -> None:

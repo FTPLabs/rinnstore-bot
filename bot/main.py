@@ -23,6 +23,7 @@ from .models import Admin, User
 from .services.settings_service import load_all_settings
 from .utils.backup import backup_scheduler
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,10 +39,12 @@ async def setup_initial_admins():
         logger.warning("ADMIN_IDS не задан")
         return
 
-    async with AsyncSessionFactory() as session:
-        for admin_id in admin_ids:
-            result = await session.execute(select(Admin).where(Admin.user_id == admin_id))
-            if not result.scalar_one_or_none():
+    for admin_id in admin_ids:
+        try:
+            async with AsyncSessionFactory() as session:
+                result = await session.execute(select(Admin).where(Admin.user_id == admin_id))
+                if result.scalar_one_or_none():
+                    continue
                 user_result = await session.execute(select(User).where(User.id == admin_id))
                 if not user_result.scalar_one_or_none():
                     user = User(id=admin_id, first_name="Admin", referral_code=f"ADMIN{admin_id}")
@@ -51,6 +54,8 @@ async def setup_initial_admins():
                 session.add(admin)
                 await session.commit()
                 logger.info(f"Суперадмин зарегистрирован: {admin_id}")
+        except IntegrityError:
+            logger.info(f"Суперадмин {admin_id} уже существует (race condition — игнорируем)")
 
 
 async def create_tables():
