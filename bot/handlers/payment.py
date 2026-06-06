@@ -1,6 +1,8 @@
+from decimal import Decimal
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from ..models import User
 from ..keyboards.user import payment_link_kb, back_to_menu_kb, order_detail_kb
 from ..services.payment_service import (
@@ -54,6 +56,55 @@ async def cb_pay_crypto(call: CallbackQuery, session: AsyncSession, user: User):
         f"К оплате: <b>{payment.amount} USDT</b>",
         reply_markup=payment_link_kb(payment.pay_url, order_id),
     )
+
+
+@router.callback_query(F.data.startswith("pay_balance_"))
+async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User):
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
+
+    order = await get_order(session, order_id)
+    if not order or order.user_id != user.id:
+        await call.answer("Заказ не найден", show_alert=True)
+        return
+    if order.status != "pending":
+        await call.answer("Заказ уже обработан", show_alert=True)
+        return
+
+    # Перечитываем пользователя чтобы получить актуальный баланс
+    result = await session.execute(select(User).where(User.id == user.id))
+    db_user = result.scalar_one_or_none()
+    if not db_user:
+        await call.answer("Ошибка пользователя", show_alert=True)
+        return
+
+    if db_user.balance < order.total_amount:
+        await call.answer(
+            f"Недостаточно средств. Баланс: {db_user.balance:.2f} ₽, нужно: {order.total_amount} ₽",
+            show_alert=True
+        )
+        return
+
+    # Списываем баланс
+    db_user.balance -= order.total_amount
+    db_user.total_spent = (db_user.total_spent or Decimal("0")) + order.total_amount
+    order.status = "paid"
+    await session.commit()
+
+    # Выдаём товар
+    delivered = await deliver_order(session, order_id)
+    if not delivered:
+        await call.answer("Ошибка выдачи товара. Напишите в поддержку.", show_alert=True)
+        return
+
+    items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+    await call.message.edit_text(
+        f"{OK} <b>Оплачено с баланса!</b>\n\n{items_text}\n\nСохраните данные.",
+        reply_markup=back_to_menu_kb(),
+    )
+    await call.answer("✅ Оплата прошла")
 
 
 @router.callback_query(F.data == "pay_rollypay_soon")
