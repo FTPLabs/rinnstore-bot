@@ -2,6 +2,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from ..models import Category, Product, ProductItem
 
+UNLIMITED_STOCK = 9999
+
 
 async def get_active_categories(session: AsyncSession) -> list[Category]:
     result = await session.execute(
@@ -32,6 +34,16 @@ async def get_product(session: AsyncSession, product_id: int) -> Product | None:
 
 
 async def get_stock_count(session: AsyncSession, product_id: int) -> int:
+    product = await get_product(session, product_id)
+    if product and product.is_unlimited:
+        item_result = await session.execute(
+            select(func.count(ProductItem.id))
+            .where(ProductItem.product_id == product_id)
+        )
+        if (item_result.scalar() or 0) > 0:
+            return UNLIMITED_STOCK
+        return 0
+
     result = await session.execute(
         select(func.count(ProductItem.id))
         .where(
