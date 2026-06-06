@@ -2,17 +2,27 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-def main_menu_kb() -> InlineKeyboardMarkup:
+def main_menu_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="Каталог", callback_data="catalog"),
-        InlineKeyboardButton(text="Корзина", callback_data="cart"),
+        InlineKeyboardButton(text="🛍 Каталог", callback_data="catalog"),
+        InlineKeyboardButton(text="🛒 Корзина", callback_data="cart"),
     )
     builder.row(
-        InlineKeyboardButton(text="Заказы", callback_data="my_orders"),
-        InlineKeyboardButton(text="Профиль", callback_data="profile"),
+        InlineKeyboardButton(text="📋 Заказы", callback_data="my_orders"),
+        InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
     )
-    builder.row(InlineKeyboardButton(text="Поддержка", callback_data="support"))
+    builder.row(InlineKeyboardButton(text="💬 Поддержка", callback_data="support"))
+    if is_admin:
+        builder.row(InlineKeyboardButton(text="⚙️ Админ-панель", callback_data="admin_main"))
+    return builder.as_markup()
+
+
+def profile_kb(ref_code: str, bot_username: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    ref_link = f"https://t.me/{bot_username}?start={ref_code}"
+    builder.row(InlineKeyboardButton(text="🔗 Моя реф. ссылка", url=ref_link))
+    builder.row(InlineKeyboardButton(text="◀️ Меню", callback_data="main_menu"))
     return builder.as_markup()
 
 
