@@ -13,20 +13,20 @@ from ..keyboards.user import back_to_menu_kb
 router = Router()
 
 
-class PromoStates(StatesGroup):
+class UserPromoStates(StatesGroup):
     waiting_code = State()
 
 
 @router.callback_query(F.data == "promo")
 async def cb_promo(call: CallbackQuery, state: FSMContext):
-    await state.set_state(PromoStates.waiting_code)
+    await state.set_state(UserPromoStates.waiting_code)
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="main_menu"))
     await call.message.edit_text("Введите промокод:", reply_markup=builder.as_markup())
     await call.answer()
 
 
-@router.message(PromoStates.waiting_code)
+@router.message(UserPromoStates.waiting_code)
 async def process_promo_code(message: Message, session: AsyncSession, state: FSMContext):
     code = message.text.strip().upper()
     result = await session.execute(
