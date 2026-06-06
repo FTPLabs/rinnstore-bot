@@ -214,6 +214,10 @@ def admin_user_detail_kb(user_id: int, is_banned: bool) -> InlineKeyboardMarkup:
         text=f"{plain(ORDERS)} Заказы пользователя",
         callback_data=f"admin_user_orders_{user_id}"
     ))
+    builder.row(InlineKeyboardButton(
+        text="💰 Начислить баланс",
+        callback_data=f"admin_add_balance_{user_id}"
+    ))
     builder.row(
         InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_users"),
         InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"),
