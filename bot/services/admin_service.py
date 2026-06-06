@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update, delete
 from ..models import (
-    Admin, User, Product, ProductItem, Order, Category,
+    Admin, User, Product, ProductItem, Order, OrderItem, Category,
     PromoCode, AuditLog
 )
 
@@ -50,26 +50,28 @@ async def get_all_products(session: AsyncSession) -> list[Product]:
 
 async def get_all_categories(session: AsyncSession) -> list[Category]:
     result = await session.execute(
-        select(Category).order_by(Category.sort_order, Category.name)
+        select(Category)
+        .where(Category.is_active == True)
+        .order_by(Category.sort_order, Category.name)
     )
     return result.scalars().all()
 
 
 async def get_root_categories(session: AsyncSession) -> list[Category]:
-    """Только корневые категории (без родителя)."""
+    """Только корневые активные категории (без родителя)."""
     result = await session.execute(
         select(Category)
-        .where(Category.parent_id == None)
+        .where(Category.parent_id == None, Category.is_active == True)
         .order_by(Category.sort_order, Category.name)
     )
     return result.scalars().all()
 
 
 async def get_subcategories_admin(session: AsyncSession, parent_id: int) -> list[Category]:
-    """Подкатегории указанной категории."""
+    """Активные подкатегории указанной категории."""
     result = await session.execute(
         select(Category)
-        .where(Category.parent_id == parent_id)
+        .where(Category.parent_id == parent_id, Category.is_active == True)
         .order_by(Category.sort_order, Category.name)
     )
     return result.scalars().all()
@@ -114,16 +116,41 @@ async def toggle_product(session: AsyncSession, product_id: int) -> bool:
     return product.is_active
 
 
+async def _hard_delete_product(session: AsyncSession, product_id: int) -> None:
+    """
+    Реальное удаление товара из БД.
+    - Если товар участвовал в заказах (OrderItem) → нельзя удалить FK, делаем soft-delete.
+    - Иначе → удаляем ProductItem и Product из БД.
+    """
+    # Проверяем наличие заказов на этот товар
+    has_orders = (await session.execute(
+        select(func.count()).select_from(OrderItem).where(OrderItem.product_id == product_id)
+    )).scalar() or 0
+
+    if has_orders:
+        # Soft-delete: скрываем, но не удаляем (FK ссылаются из OrderItem)
+        await session.execute(
+            update(Product).where(Product.id == product_id).values(is_active=False)
+        )
+        # Удаляем только непроданный остаток
+        await session.execute(
+            delete(ProductItem).where(
+                ProductItem.product_id == product_id,
+                ProductItem.is_sold == False,
+                ProductItem.is_reserved == False,
+            )
+        )
+    else:
+        # Hard-delete: удаляем всё
+        await session.execute(delete(ProductItem).where(ProductItem.product_id == product_id))
+        await session.execute(delete(Product).where(Product.id == product_id))
+
+
 async def delete_product(session: AsyncSession, product_id: int) -> bool:
     result = await session.execute(select(Product).where(Product.id == product_id))
-    product = result.scalar_one_or_none()
-    if not product:
+    if not result.scalar_one_or_none():
         return False
-    await session.execute(
-        update(ProductItem).where(ProductItem.product_id == product_id).values(is_sold=True)
-    )
-    product.is_active = False
-    product.name = f"[УДАЛЁН] {product.name}"
+    await _hard_delete_product(session, product_id)
     await session.commit()
     return True
 
@@ -133,19 +160,28 @@ async def delete_category(session: AsyncSession, category_id: int) -> bool:
     cat = result.scalar_one_or_none()
     if not cat:
         return False
-    # Деактивируем все дочерние категории
-    subcats = await get_subcategories_admin(session, category_id)
-    for sub in subcats:
-        await session.execute(
-            update(Product).where(Product.category_id == sub.id).values(is_active=False)
-        )
-        sub.is_active = False
-        sub.name = f"[УДАЛЁН] {sub.name}"
-    await session.execute(
-        update(Product).where(Product.category_id == category_id).values(is_active=False)
+
+    # Получаем ВСЕ подкатегории (включая скрытые), чтобы зачистить до конца
+    all_subcats_res = await session.execute(
+        select(Category).where(Category.parent_id == category_id)
     )
-    cat.is_active = False
-    cat.name = f"[УДАЛЁН] {cat.name}"
+    subcats = all_subcats_res.scalars().all()
+
+    for sub in subcats:
+        # Удаляем все товары подкатегории
+        prod_res = await session.execute(select(Product).where(Product.category_id == sub.id))
+        for product in prod_res.scalars().all():
+            await _hard_delete_product(session, product.id)
+        # Удаляем саму подкатегорию
+        await session.execute(delete(Category).where(Category.id == sub.id))
+
+    # Удаляем товары основной категории
+    prod_res = await session.execute(select(Product).where(Product.category_id == category_id))
+    for product in prod_res.scalars().all():
+        await _hard_delete_product(session, product.id)
+
+    # Удаляем саму категорию (если нет товаров с заказами — FK на Category нет)
+    await session.execute(delete(Category).where(Category.id == category_id))
     await session.commit()
     return True
 

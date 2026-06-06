@@ -177,7 +177,9 @@ async def cb_cat_view(call: CallbackQuery, session: AsyncSession, user: User, st
 
     subcats  = await get_subcategories_admin(session, cat_id)
     prod_res = await session.execute(
-        select(Product).where(Product.category_id == cat_id).order_by(Product.sort_order, Product.name)
+        select(Product)
+        .where(Product.category_id == cat_id, Product.is_active == True)
+        .order_by(Product.sort_order, Product.name)
     )
     products = prod_res.scalars().all()
 

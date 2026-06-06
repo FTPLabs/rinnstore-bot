@@ -134,7 +134,7 @@ async def cb_delete_product_confirm(call: CallbackQuery, session: AsyncSession, 
         return await call.answer("Товар не найден", show_alert=True)
 
     await call.message.edit_text(
-        f"⚠️ Удалить товар <b>{product.name}</b>?\n\nВсе ключи будут помечены как проданные.",
+        f"⚠️ Удалить товар <b>{product.name}</b>?\n\nТовар и все ключи будут удалены безвозвратно.",
         reply_markup=admin_confirm_kb("del_product", product_id),
         parse_mode="HTML"
     )
@@ -150,9 +150,8 @@ async def cb_delete_product_do(call: CallbackQuery, session: AsyncSession, user:
         return await call.answer("Ошибка данных", show_alert=True)
     await delete_product(session, product_id)
     await log_action(session, user.id, "delete_product", "product", product_id)
-    await call.answer(f"{plain(OK)} Товар удалён", show_alert=True)
-    call.data = "admin_products"
-    await cb_admin_products(call, session, user, state=state)
+    await call.answer("✅ Товар удалён", show_alert=True)
+    await call.message.edit_text("✅ Товар удалён.")
 
 
 # ─── CHANGE PRICE ────────────────────────────────────────────────────
@@ -688,7 +687,7 @@ async def cb_delete_cat(call: CallbackQuery, session: AsyncSession, user: User):
         return await call.answer("Категория не найдена", show_alert=True)
 
     await call.message.edit_text(
-        f"⚠️ Удалить категорию <b>{cat.name}</b>?\n\nВсе товары и подкатегории будут скрыты.",
+        f"⚠️ Удалить категорию <b>{cat.name}</b>?\n\nВсе товары и подкатегории будут удалены безвозвратно.",
         reply_markup=admin_confirm_kb("del_cat", cat_id),
         parse_mode="HTML"
     )
@@ -704,6 +703,5 @@ async def cb_delete_cat_do(call: CallbackQuery, session: AsyncSession, user: Use
         return await call.answer("Ошибка данных", show_alert=True)
     await delete_category(session, cat_id)
     await log_action(session, user.id, "delete_category", "category", cat_id)
-    await call.answer(f"{plain(OK)} Категория удалена", show_alert=True)
-    call.data = "admin_categories"
-    await cb_admin_categories(call, session, user, state=state)
+    await call.answer("✅ Категория удалена", show_alert=True)
+    await call.message.edit_text("✅ Категория удалена.")
