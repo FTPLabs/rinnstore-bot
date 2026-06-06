@@ -1,6 +1,7 @@
 from decimal import Decimal
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, delete
 from ..models import (
     Admin, User, Product, ProductItem, Order, Category,
     PromoCode, AuditLog
@@ -95,6 +96,60 @@ async def toggle_product(session: AsyncSession, product_id: int) -> bool:
     product.is_active = not product.is_active
     await session.commit()
     return product.is_active
+
+
+async def delete_product(session: AsyncSession, product_id: int) -> bool:
+    result = await session.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        return False
+    await session.execute(
+        update(ProductItem).where(ProductItem.product_id == product_id).values(is_sold=True)
+    )
+    product.is_active = False
+    product.name = f"[УДАЛЁН] {product.name}"
+    await session.commit()
+    return True
+
+
+async def delete_category(session: AsyncSession, category_id: int) -> bool:
+    result = await session.execute(select(Category).where(Category.id == category_id))
+    cat = result.scalar_one_or_none()
+    if not cat:
+        return False
+    await session.execute(
+        update(Product).where(Product.category_id == category_id).values(is_active=False)
+    )
+    cat.is_active = False
+    cat.name = f"[УДАЛЁН] {cat.name}"
+    await session.commit()
+    return True
+
+
+async def update_product_price(session: AsyncSession, product_id: int, price: Decimal) -> bool:
+    result = await session.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        return False
+    product.price = price
+    await session.commit()
+    return True
+
+
+async def set_product_discount(
+    session: AsyncSession,
+    product_id: int,
+    percent: Decimal | None,
+    expires_at: datetime | None,
+) -> bool:
+    result = await session.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        return False
+    product.discount_percent = percent
+    product.discount_expires_at = expires_at
+    await session.commit()
+    return True
 
 
 async def add_product_keys(session: AsyncSession, product_id: int, keys: list[str]) -> int:
