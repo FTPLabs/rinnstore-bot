@@ -1,6 +1,5 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, ForeignKey, Integer,
     Numeric, String, Text, func, JSON, Index
@@ -68,6 +67,7 @@ class Product(Base):
     price = Column(Numeric(12, 2), nullable=False)
     currency = Column(String(10), default="RUB")
     is_active = Column(Boolean, default=True)
+    is_unlimited = Column(Boolean, default=False)
     sort_order = Column(Integer, default=0)
     image_url = Column(Text)
     discount_percent = Column(Numeric(5, 2), nullable=True)
