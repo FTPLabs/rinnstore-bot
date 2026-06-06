@@ -1,6 +1,7 @@
 from typing import Callable, Any, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..services.user_service import get_or_create_user
 
@@ -58,6 +59,11 @@ class UserMiddleware(BaseMiddleware):
                     return
 
             if not _is_onboarding_event(event) and user.terms_accepted and not user.captcha_passed:
+                fsm: FSMContext | None = data.get("state")
+                if fsm is not None:
+                    current_state = await fsm.get_state()
+                    if current_state is not None:
+                        return await handler(event, data)
                 if isinstance(event, Message):
                     await event.answer("Завершите регистрацию — отправьте /start")
                     return
