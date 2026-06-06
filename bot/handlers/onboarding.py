@@ -6,8 +6,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-from ..models import User
+from ..models import User, Admin
 from ..services.settings_service import get_setting
 from ..keyboards.user import main_menu_kb, terms_kb, captcha_kb, channel_kb
 from ..utils.captcha import generate_captcha
@@ -23,6 +24,11 @@ class OnboardingState(StatesGroup):
 
 def _welcome_text(shop_name: str) -> str:
     return f"<b>{shop_name}</b>\nЦифровые товары · Крипто · Мгновенно"
+
+
+async def _is_admin(session: AsyncSession, user_id: int) -> bool:
+    result = await session.execute(select(Admin).where(Admin.user_id == user_id))
+    return result.scalar_one_or_none() is not None
 
 
 async def start_onboarding(
@@ -73,14 +79,16 @@ async def start_onboarding(
                 await msg.answer(text, reply_markup=channel_kb(channel))
             return
 
+    is_adm = await _is_admin(session, user.id)
     text = _welcome_text(shop_name)
+    kb = main_menu_kb(is_admin=is_adm)
     try:
         if is_call:
-            await msg.edit_text(text, reply_markup=main_menu_kb())
+            await msg.edit_text(text, reply_markup=kb)
         else:
-            await msg.answer(text, reply_markup=main_menu_kb())
+            await msg.answer(text, reply_markup=kb)
     except Exception:
-        await msg.answer(text, reply_markup=main_menu_kb())
+        await msg.answer(text, reply_markup=kb)
 
 
 async def send_captcha(msg: Message, state: FSMContext) -> None:
@@ -132,7 +140,8 @@ async def handle_captcha_answer(message: Message, session: AsyncSession, user: U
                 )
                 return
 
-        await message.answer(_welcome_text(shop_name), reply_markup=main_menu_kb())
+        is_adm = await _is_admin(session, user.id)
+        await message.answer(_welcome_text(shop_name), reply_markup=main_menu_kb(is_admin=is_adm))
     else:
         await state.clear()
         buf, answer = generate_captcha()
@@ -162,19 +171,21 @@ async def cb_check_channel(call: CallbackQuery, session: AsyncSession, user: Use
     if not channel:
         await call.answer()
         shop_name = await get_setting(session, "shop_name")
+        is_adm = await _is_admin(session, user.id)
         try:
-            await call.message.edit_text(_welcome_text(shop_name), reply_markup=main_menu_kb())
+            await call.message.edit_text(_welcome_text(shop_name), reply_markup=main_menu_kb(is_admin=is_adm))
         except Exception:
-            await call.message.answer(_welcome_text(shop_name), reply_markup=main_menu_kb())
+            await call.message.answer(_welcome_text(shop_name), reply_markup=main_menu_kb(is_admin=is_adm))
         return
 
     joined = await check_channel_member(bot, channel, user.id)
     if joined:
         await call.answer("Подписка подтверждена!")
         shop_name = await get_setting(session, "shop_name")
+        is_adm = await _is_admin(session, user.id)
         try:
-            await call.message.edit_text(_welcome_text(shop_name), reply_markup=main_menu_kb())
+            await call.message.edit_text(_welcome_text(shop_name), reply_markup=main_menu_kb(is_admin=is_adm))
         except Exception:
-            await call.message.answer(_welcome_text(shop_name), reply_markup=main_menu_kb())
+            await call.message.answer(_welcome_text(shop_name), reply_markup=main_menu_kb(is_admin=is_adm))
     else:
         await call.answer("Вы ещё не вступили в канал.", show_alert=True)
