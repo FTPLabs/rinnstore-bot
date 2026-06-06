@@ -17,6 +17,7 @@ from .handlers import onboarding
 from .handlers.admin import main as admin_main
 from .handlers.admin import products, orders_admin, users_admin, promos_admin, broadcast_admin
 from .handlers.admin import settings_admin
+from .handlers.admin import catalog_admin
 from .webhook_handler import setup_webhook_routes
 from .database import AsyncSessionFactory
 from .models import Admin, User
@@ -90,6 +91,7 @@ async def main():
     dp.include_router(orders.router)
     dp.include_router(promo.router)
     dp.include_router(admin_main.router)
+    dp.include_router(catalog_admin.router)  # единый каталог — до products
     dp.include_router(products.router)
     dp.include_router(orders_admin.router)
     dp.include_router(users_admin.router)
