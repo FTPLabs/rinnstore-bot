@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from .config import settings
@@ -43,6 +44,6 @@ class Base(DeclarativeBase):
     pass
 
 
-async def get_session() -> AsyncSession:
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionFactory() as session:
         yield session
