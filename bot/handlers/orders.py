@@ -73,7 +73,9 @@ async def cb_get_items(call: CallbackQuery, session: AsyncSession, user: User):
     if not order or order.user_id != user.id:
         await call.answer("Заказ не найден", show_alert=True)
         return
-    if order.status not in ("paid", "delivered"):
+    # FIX: добавлен статус "partial" — пользователь с частично выданным заказом
+    # не мог получить свои товары через эту кнопку
+    if order.status not in ("paid", "delivered", "partial"):
         await call.answer("Заказ ещё не оплачен", show_alert=True)
         return
 
