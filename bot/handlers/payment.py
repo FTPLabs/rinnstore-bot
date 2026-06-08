@@ -88,8 +88,9 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
         return
 
     # Списываем баланс
+    # FIX: total_spent НЕ трогаем здесь — deliver_order уже обновляет его атомарно.
+    # Двойное начисление было: хендлер прибавлял сумму, потом deliver_order прибавлял ещё раз.
     db_user.balance -= order.total_amount
-    db_user.total_spent = (db_user.total_spent or Decimal("0")) + order.total_amount
     order.status = "paid"
     await session.commit()
 
