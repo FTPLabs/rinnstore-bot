@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,8 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 CRYPTO_CURRENCY = "USDT"
-ROLLYPAY_BASE_URL = "https://api.rollypay.io/v1"
+
+_rp_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="rollypay")
 
 # Кэш курса: обновляется каждые 5 минут
 _rate_cache: dict = {"rate": Decimal("0.011"), "updated_at": 0.0}
@@ -214,29 +216,36 @@ def verify_rollypay_signature(body: bytes, signing_secret: str, signature: str) 
         return False
 
 
-async def _rollypay_request(
-    method: str,
-    path: str,
+def _sync_create_rollypay(
     api_key: str,
-    **kwargs,
-) -> tuple[int, dict]:
-    """Выполняет HTTP-запрос к RollyPay API."""
-    url = f"{ROLLYPAY_BASE_URL}{path}"
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as http:
-            req = getattr(http, method.lower())
-            async with req(url, headers={"X-API-Key": api_key}, **kwargs) as resp:
-                try:
-                    data = await resp.json()
-                except Exception:
-                    data = {}
-                return resp.status, data
-    except asyncio.TimeoutError:
-        logger.error(f"RollyPay API timeout: {method} {url}")
-        return 0, {}
-    except Exception as e:
-        logger.error(f"RollyPay API error {method} {url}: {e}")
-        return 0, {}
+    terminal_id: str | None,
+    order_id: int,
+    amount: Decimal,
+    user_id: int | None,
+) -> dict:
+    """Синхронный вызов rollypay SDK (выполняется в ThreadPoolExecutor)."""
+    from rollypay import RollyPayClient
+    client = RollyPayClient(api_key=api_key)
+    kwargs: dict = dict(
+        amount=str(amount),
+        order_id=str(order_id),
+        payment_currency="RUB",
+        payment_method="sbp",
+        description=f"Заказ #{order_id} · RINN STORE",
+        redirect_url="https://t.me/rinnnstore_bot",
+    )
+    if terminal_id:
+        kwargs["terminal_id"] = terminal_id
+    if user_id:
+        kwargs["customer_id"] = str(user_id)
+    return client.payments.create(**kwargs)
+
+
+def _sync_get_rollypay(api_key: str, payment_id: str) -> dict:
+    """Синхронный вызов rollypay SDK для проверки статуса."""
+    from rollypay import RollyPayClient
+    client = RollyPayClient(api_key=api_key)
+    return client.payments.get(payment_id)
 
 
 async def create_rollypay_invoice(
@@ -249,43 +258,39 @@ async def create_rollypay_invoice(
     from ..services.settings_service import get_cached
 
     api_key = get_cached("rollypay_api_key") or settings.rollypay_api_key
+    terminal_id = get_cached("rollypay_terminal_id") or settings.rollypay_terminal_id
     if not api_key:
-        logger.error("RollyPay: api_key не задан")
+        logger.error("RollyPay: rollypay_api_key не задан")
         return None
 
-    host = webhook_host.rstrip("/")
-
-    payload = {
-        "amount": str(order.total_amount),
-        "order_id": str(order.id),
-        "payment_method": "sbp",
-        "description": f"Заказ #{order.id} · RINN STORE",
-        "redirect_url": f"https://t.me/rinnstoreee_bot",
-    }
-    if user_id:
-        payload["customer_id"] = str(user_id)
-
-    # Пробуем добавить callback_url если есть webhook_host
-    if host:
-        payload["callback_url"] = f"{host}/webhook/rollypay"
-
-    status_code, resp_data = await _rollypay_request(
-        "POST", "/payments", api_key, json=payload
-    )
-
-    if status_code not in (200, 201):
-        logger.error(f"RollyPay createPayment failed {status_code}: {resp_data}")
+    try:
+        loop = asyncio.get_event_loop()
+        resp_data = await loop.run_in_executor(
+            _rp_executor,
+            _sync_create_rollypay,
+            api_key,
+            terminal_id or None,
+            order.id,
+            order.total_amount,
+            user_id,
+        )
+    except Exception as e:
+        logger.error(f"RollyPay createPayment error: {e}")
         return None
+
+    logger.info(f"RollyPay API response (order={order.id}): {resp_data}")
 
     pay_url = (
         resp_data.get("payment_url")
         or resp_data.get("pay_url")
         or resp_data.get("url")
         or resp_data.get("link")
+        or resp_data.get("redirect_url")
     )
     payment_id = str(
         resp_data.get("payment_id")
         or resp_data.get("id")
+        or resp_data.get("uuid")
         or f"rp_{order.id}"
     )
 
@@ -305,25 +310,29 @@ async def create_rollypay_invoice(
     )
     session.add(payment)
     await session.commit()
-    logger.info(f"RollyPay invoice создан: order={order.id}, id={payment_id}")
+    logger.info(f"RollyPay invoice создан: order={order.id}, id={payment_id}, url={pay_url}")
     return payment
 
 
 async def check_rollypay_payment(payment_id: str, api_key: str) -> str:
-    """Проверяет статус платежа RollyPay. Возвращает: paid | created | failed | error"""
-    status_code, data = await _rollypay_request(
-        "GET", f"/payments/{payment_id}", api_key
-    )
-    if status_code == 200:
-        status = (data.get("status") or "").lower()
-        if status in ("paid", "success", "completed"):
-            return "paid"
-        if status in ("created", "pending", "waiting"):
-            return "created"
-        if status in ("failed", "cancelled", "expired"):
-            return "failed"
-        return status or "unknown"
-    return "error"
+    """Проверяет статус платежа RollyPay через SDK. Возвращает: paid | created | failed | error"""
+    try:
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            _rp_executor, _sync_get_rollypay, api_key, payment_id
+        )
+    except Exception as e:
+        logger.error(f"RollyPay check error (id={payment_id}): {e}")
+        return "error"
+
+    status = (data.get("status") or "").lower()
+    if status in ("paid", "success", "completed"):
+        return "paid"
+    if status in ("created", "pending", "waiting"):
+        return "created"
+    if status in ("failed", "cancelled", "expired"):
+        return "failed"
+    return status or "unknown"
 
 
 async def process_rollypay_webhook(session: AsyncSession, data: dict) -> bool:
