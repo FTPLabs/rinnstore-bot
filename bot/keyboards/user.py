@@ -149,7 +149,8 @@ def orders_kb(orders: list) -> InlineKeyboardMarkup:
 
 def order_detail_kb(order_id: int, status: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    if status in ("paid", "delivered"):
+    # FIX: добавлен статус "partial" — кнопка не показывалась при частичной выдаче
+    if status in ("paid", "delivered", "partial"):
         builder.row(InlineKeyboardButton(text="🔑 Получить товар", callback_data=f"get_items_{order_id}"))
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="my_orders"))
     return builder.as_markup()
