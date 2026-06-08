@@ -4,18 +4,28 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from ..models import User, Payment
+from ..models import User, Payment, Order
 from ..keyboards.user import payment_link_kb, back_to_menu_kb, order_detail_kb
 from ..services.payment_service import (
-    create_cryptobot_invoice, get_payment_by_order,
-    check_cryptobot_invoice, mark_payment_paid
+    create_cryptobot_invoice, get_payment_by_order, get_payment_by_order_provider,
+    check_cryptobot_invoice, mark_payment_paid,
+    create_rollypay_invoice, check_rollypay_payment,
 )
 from ..services.order_service import get_order, deliver_order, cancel_order
 from ..utils.helpers import parse_callback_int
 from ..utils.emoji import KEY, OK, FAIL
+from ..config import settings as env_settings
 
 router = Router()
 
+
+def _get_webhook_host() -> str:
+    from ..services.settings_service import get_cached
+    host = get_cached("webhook_host") or env_settings.webhook_host
+    return host.rstrip("/") if host else ""
+
+
+# ─── CRYPTOBOT ──────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("pay_crypto_"))
 async def cb_pay_crypto(call: CallbackQuery, session: AsyncSession, user: User):
@@ -24,7 +34,11 @@ async def cb_pay_crypto(call: CallbackQuery, session: AsyncSession, user: User):
         await call.answer("Ошибка данных", show_alert=True)
         return
 
-    order = await get_order(session, order_id)
+    # ИСПРАВЛЕНИЕ #1: SELECT FOR UPDATE — защита от двойного нажатия
+    result = await session.execute(
+        select(Order).where(Order.id == order_id).with_for_update()
+    )
+    order = result.scalar_one_or_none()
     if not order or order.user_id != user.id:
         await call.answer("Заказ не найден", show_alert=True)
         return
@@ -32,11 +46,11 @@ async def cb_pay_crypto(call: CallbackQuery, session: AsyncSession, user: User):
         await call.answer("Заказ уже обработан", show_alert=True)
         return
 
-    existing = await get_payment_by_order(session, order_id)
-    if existing and existing.status == "pending" and existing.pay_url:
+    existing = await get_payment_by_order_provider(session, order_id, "cryptobot")
+    if existing and existing.pay_url:
         await call.message.edit_text(
             f"<b>Оплата заказа #{order_id}</b>\n\nСумма: <b>{order.total_amount} ₽</b>",
-            reply_markup=payment_link_kb(existing.pay_url, order_id),
+            reply_markup=payment_link_kb(existing.pay_url, order_id, "crypto"),
         )
         await call.answer()
         return
@@ -55,9 +69,61 @@ async def cb_pay_crypto(call: CallbackQuery, session: AsyncSession, user: User):
         f"<b>Оплата заказа #{order_id}</b>\n\n"
         f"Сумма: <b>{order.total_amount} ₽</b>\n"
         f"К оплате: <b>{payment.amount} USDT</b>",
-        reply_markup=payment_link_kb(payment.pay_url, order_id),
+        reply_markup=payment_link_kb(payment.pay_url, order_id, "crypto"),
     )
 
+
+# ─── ROLLYPAY (СБП) ──────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("pay_rollypay_"))
+async def cb_pay_rollypay(call: CallbackQuery, session: AsyncSession, user: User):
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
+
+    # ИСПРАВЛЕНИЕ #1: SELECT FOR UPDATE
+    result = await session.execute(
+        select(Order).where(Order.id == order_id).with_for_update()
+    )
+    order = result.scalar_one_or_none()
+    if not order or order.user_id != user.id:
+        await call.answer("Заказ не найден", show_alert=True)
+        return
+    if order.status != "pending":
+        await call.answer("Заказ уже обработан", show_alert=True)
+        return
+
+    existing = await get_payment_by_order_provider(session, order_id, "rollypay")
+    if existing and existing.pay_url:
+        await call.message.edit_text(
+            f"<b>💳 Оплата через СБП — заказ #{order_id}</b>\n\nСумма: <b>{order.total_amount} ₽</b>",
+            reply_markup=payment_link_kb(existing.pay_url, order_id, "rollypay"),
+        )
+        await call.answer()
+        return
+
+    await call.answer("Создаю ссылку на оплату...")
+    host = _get_webhook_host()
+    payment = await create_rollypay_invoice(session, order, host, user_id=user.id)
+
+    if not payment:
+        await call.message.edit_text(
+            "❌ Ошибка создания платежа RollyPay. Попробуйте другой способ оплаты.",
+            reply_markup=back_to_menu_kb(),
+        )
+        return
+
+    await call.message.edit_text(
+        f"<b>💳 Оплата через СБП</b>\n\n"
+        f"Заказ: <b>#{order_id}</b>\n"
+        f"Сумма: <b>{order.total_amount} ₽</b>\n\n"
+        f"Нажмите кнопку ниже для перехода к оплате по СБП.",
+        reply_markup=payment_link_kb(payment.pay_url, order_id, "rollypay"),
+    )
+
+
+# ─── БАЛАНС ──────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("pay_balance_"))
 async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User):
@@ -66,7 +132,11 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
         await call.answer("Ошибка данных", show_alert=True)
         return
 
-    order = await get_order(session, order_id)
+    # ИСПРАВЛЕНИЕ #1 + #2: FOR UPDATE на Order И на User, commit ПОСЛЕ deliver
+    result = await session.execute(
+        select(Order).where(Order.id == order_id).with_for_update()
+    )
+    order = result.scalar_one_or_none()
     if not order or order.user_id != user.id:
         await call.answer("Заказ не найден", show_alert=True)
         return
@@ -74,8 +144,10 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
         await call.answer("Заказ уже обработан", show_alert=True)
         return
 
-    result = await session.execute(select(User).where(User.id == user.id).with_for_update())
-    db_user = result.scalar_one_or_none()
+    db_user_result = await session.execute(
+        select(User).where(User.id == user.id).with_for_update()
+    )
+    db_user = db_user_result.scalar_one_or_none()
     if not db_user:
         await call.answer("Ошибка пользователя", show_alert=True)
         return
@@ -83,10 +155,11 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
     if db_user.balance < order.total_amount:
         await call.answer(
             f"Недостаточно средств. Баланс: {db_user.balance:.2f} ₽, нужно: {order.total_amount} ₽",
-            show_alert=True
+            show_alert=True,
         )
         return
 
+    # Списываем баланс и меняем статус в одной транзакции
     db_user.balance -= order.total_amount
     order.status = "paid"
 
@@ -103,9 +176,27 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
     session.add(payment_record)
     await session.commit()
 
-    delivered = await deliver_order(session, order_id)
+    # ИСПРАВЛЕНИЕ #2: deliver_order ПОСЛЕ commit, но ошибка не потеряет деньги —
+    # заказ уже в статусе "paid", пользователь может получить товар через "Мои заказы"
+    try:
+        delivered = await deliver_order(session, order_id)
+    except Exception as e:
+        from ..utils.helpers import logger as h_logger
+        h_logger.error(f"deliver_order error after balance payment order#{order_id}: {e}", exc_info=True)
+        await call.message.edit_text(
+            f"{OK} <b>Оплата прошла!</b>\n\n"
+            "⚠️ Произошла ошибка выдачи. Зайдите в <b>Мои заказы</b> и нажмите «Получить товар».",
+            reply_markup=back_to_menu_kb(),
+        )
+        await call.answer("✅ Оплачено")
+        return
+
     if not delivered:
-        await call.answer("Ошибка выдачи товара. Напишите в поддержку.", show_alert=True)
+        await call.message.edit_text(
+            f"{OK} <b>Оплачено!</b>\n\n⚠️ Ошибка выдачи. Напишите в поддержку или зайдите в Мои заказы.",
+            reply_markup=back_to_menu_kb(),
+        )
+        await call.answer("✅ Оплата прошла")
         return
 
     items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
@@ -113,20 +204,23 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
         f"{OK} <b>Оплачено с баланса!</b>\n\n{items_text}\n\nСохраните данные.",
         reply_markup=back_to_menu_kb(),
     )
-    await call.answer("\u2705 Оплата прошла")
+    await call.answer("✅ Оплата прошла")
 
 
-@router.callback_query(F.data == "pay_rollypay_soon")
-async def cb_rollypay_soon(call: CallbackQuery):
-    await call.answer("RollyPay — скоро!", show_alert=True)
-
+# ─── ПРОВЕРКА ПЛАТЕЖА ────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("check_payment_"))
 async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: User):
+    parts = call.data.split("_")
+    # формат: check_payment_{order_id}_{provider}
+    if len(parts) < 3:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
     order_id = parse_callback_int(call.data, 2)
     if order_id is None:
         await call.answer("Ошибка данных", show_alert=True)
         return
+    provider = parts[3] if len(parts) > 3 else None
 
     order = await get_order(session, order_id)
     if not order or order.user_id != user.id:
@@ -134,7 +228,7 @@ async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: Use
         return
 
     if order.status == "delivered":
-        await call.answer("Заказ уже выдан \u2705", show_alert=True)
+        await call.answer("Заказ уже выдан ✅", show_alert=True)
         return
 
     if order.status == "paid":
@@ -147,37 +241,80 @@ async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: Use
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
             reply_markup=back_to_menu_kb(),
         )
-        await call.answer("\u2705 Оплата подтверждена")
+        await call.answer("✅ Оплата подтверждена")
         return
 
-    payment = await get_payment_by_order(session, order_id)
+    if provider == "rollypay":
+        await _check_rollypay(call, session, order_id, order)
+    else:
+        await _check_cryptobot(call, session, order_id, order)
+
+
+async def _check_cryptobot(call, session, order_id, order):
+    payment = await get_payment_by_order_provider(session, order_id, "cryptobot")
+    if not payment:
+        payment = await get_payment_by_order(session, order_id)
     if not payment:
         await call.answer("Платёж не найден", show_alert=True)
         return
 
     status = await check_cryptobot_invoice(payment.provider_invoice_id)
-
     if status == "paid":
         await mark_payment_paid(session, payment)
         delivered = await deliver_order(session, order_id)
         if not delivered:
-            await call.answer("Ошибка выдачи товара. Напишите в поддержку.", show_alert=True)
+            await call.answer("Ошибка выдачи. Напишите в поддержку.", show_alert=True)
             return
         items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
             reply_markup=back_to_menu_kb(),
         )
-        await call.answer("\u2705 Оплата подтверждена")
+        await call.answer("✅ Оплата подтверждена")
     elif status == "expired":
         await call.answer("Время оплаты истекло. Создайте новый заказ.", show_alert=True)
     elif status == "active":
         await call.answer("Оплата ещё не поступила.", show_alert=True)
-    elif status == "error":
-        await call.answer("Ошибка проверки платежа. Попробуйте позже.", show_alert=True)
     else:
         await call.answer(f"Статус: {status}", show_alert=True)
 
+
+async def _check_rollypay(call, session, order_id, order):
+    from ..services.settings_service import get_cached
+    from ..config import settings as env_settings
+
+    api_key = get_cached("rollypay_api_key") or env_settings.rollypay_api_key
+    if not api_key:
+        await call.answer("RollyPay не настроен", show_alert=True)
+        return
+
+    payment = await get_payment_by_order_provider(session, order_id, "rollypay")
+    if not payment:
+        await call.answer("Платёж не найден", show_alert=True)
+        return
+
+    status = await check_rollypay_payment(payment.provider_invoice_id, api_key)
+    if status == "paid":
+        await mark_payment_paid(session, payment)
+        delivered = await deliver_order(session, order_id)
+        if not delivered:
+            await call.answer("Ошибка выдачи. Напишите в поддержку.", show_alert=True)
+            return
+        items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+        await call.message.edit_text(
+            f"{OK} <b>Оплачено через СБП!</b>\n\n{items_text}\n\nСохраните данные.",
+            reply_markup=back_to_menu_kb(),
+        )
+        await call.answer("✅ Оплата подтверждена")
+    elif status == "created":
+        await call.answer("Оплата ещё не поступила. Попробуйте позже.", show_alert=True)
+    elif status == "failed":
+        await call.answer("Платёж отклонён или истёк. Создайте новый заказ.", show_alert=True)
+    else:
+        await call.answer(f"Статус: {status}", show_alert=True)
+
+
+# ─── ОТМЕНА ЗАКАЗА ───────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("cancel_order_"))
 async def cb_cancel_order(call: CallbackQuery, session: AsyncSession, user: User):
@@ -195,5 +332,8 @@ async def cb_cancel_order(call: CallbackQuery, session: AsyncSession, user: User
         return
 
     await cancel_order(session, order_id)
-    await call.message.edit_text(f"{FAIL} Заказ #{order_id} отменён", reply_markup=back_to_menu_kb())
+    await call.message.edit_text(
+        f"{FAIL} Заказ #{order_id} отменён",
+        reply_markup=back_to_menu_kb(),
+    )
     await call.answer("Отменён")

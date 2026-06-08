@@ -1,5 +1,6 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from decimal import Decimal
 
 
 def main_menu_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
@@ -80,9 +81,6 @@ def catalog_kb(categories: list) -> InlineKeyboardMarkup:
 
 
 def subcatalog_kb(subcategories: list, back_cb: str = "catalog") -> InlineKeyboardMarkup:
-    """Keyboard for subcategories.
-    back_cb is passed explicitly to support any nesting depth.
-    """
     builder = InlineKeyboardBuilder()
     for cat in subcategories:
         builder.row(InlineKeyboardButton(
@@ -105,25 +103,46 @@ def products_kb(products: list, cat_id: int, parent_cat_id: int | None = None) -
     return builder.as_markup()
 
 
-def payment_method_kb(order_id: int, user_balance: "Decimal | None" = None) -> InlineKeyboardMarkup:
-    from decimal import Decimal
+def payment_method_kb(
+    order_id: int,
+    user_balance: "Decimal | None" = None,
+    rollypay_enabled: bool = True,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="₿ CryptoBot", callback_data=f"pay_crypto_{order_id}"))
+    builder.row(InlineKeyboardButton(
+        text="₿ CryptoBot (USDT)",
+        callback_data=f"pay_crypto_{order_id}",
+    ))
+    if rollypay_enabled:
+        builder.row(InlineKeyboardButton(
+            text="💳 СБП / RollyPay (RUB)",
+            callback_data=f"pay_rollypay_{order_id}",
+        ))
     if user_balance is not None and user_balance > Decimal("0"):
         builder.row(InlineKeyboardButton(
             text=f"💰 Баланс ({user_balance:.2f} ₽)",
-            callback_data=f"pay_balance_{order_id}"
+            callback_data=f"pay_balance_{order_id}",
         ))
-    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data=f"cancel_order_{order_id}"))
+    builder.row(InlineKeyboardButton(
+        text="✕ Отмена",
+        callback_data=f"cancel_order_{order_id}",
+    ))
     return builder.as_markup()
 
 
-def payment_link_kb(pay_url: str, order_id: int) -> InlineKeyboardMarkup:
+def payment_link_kb(pay_url: str, order_id: int, provider: str = "crypto") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="Оплатить", url=pay_url))
+    btn_text = "💳 Перейти к оплате (СБП)" if provider == "rollypay" else "₿ Оплатить"
+    builder.row(InlineKeyboardButton(text=btn_text, url=pay_url))
     builder.row(
-        InlineKeyboardButton(text="✅ Проверить", callback_data=f"check_payment_{order_id}"),
-        InlineKeyboardButton(text="✕ Отмена", callback_data=f"cancel_order_{order_id}"),
+        InlineKeyboardButton(
+            text="✅ Проверить оплату",
+            callback_data=f"check_payment_{order_id}_{provider}",
+        ),
+        InlineKeyboardButton(
+            text="✕ Отмена",
+            callback_data=f"cancel_order_{order_id}",
+        ),
     )
     return builder.as_markup()
 
@@ -131,13 +150,14 @@ def payment_link_kb(pay_url: str, order_id: int) -> InlineKeyboardMarkup:
 def orders_kb(orders: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     status_icon = {
-        "pending": "⏳", "paid": "✅", "cancelled": "✕", "delivered": "🔑", "partial": "⚠️"
+        "pending": "⏳", "paid": "✅", "cancelled": "✕",
+        "delivered": "🔑", "partial": "⚠️",
     }
     for order in orders:
         icon = status_icon.get(order.status, "❓")
         builder.row(InlineKeyboardButton(
             text=f"{icon} #{order.id} — {order.total_amount} ₽",
-            callback_data=f"order_{order.id}"
+            callback_data=f"order_{order.id}",
         ))
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="main_menu"))
     return builder.as_markup()
@@ -146,7 +166,10 @@ def orders_kb(orders: list) -> InlineKeyboardMarkup:
 def order_detail_kb(order_id: int, status: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if status in ("paid", "delivered", "partial"):
-        builder.row(InlineKeyboardButton(text="🔑 Получить товар", callback_data=f"get_items_{order_id}"))
+        builder.row(InlineKeyboardButton(
+            text="🔑 Получить товар",
+            callback_data=f"get_items_{order_id}",
+        ))
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="my_orders"))
     return builder.as_markup()
 

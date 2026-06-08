@@ -11,8 +11,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     cryptobot_token: str = ""
     cryptobot_testnet: bool = False
+    rollypay_terminal_id: str = ""
     rollypay_api_key: str = ""
-    rollypay_secret: str = ""
+    rollypay_signing_secret: str = ""
+    rollypay_api_url: str = "https://api.rollypay.io/v1"
     admin_ids: str = ""
     webhook_host: str = ""
     webhook_path: str = "/webhook/bot"

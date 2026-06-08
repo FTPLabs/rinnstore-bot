@@ -4,6 +4,10 @@ from ..models import Setting
 
 _DEFAULTS = {
     "cryptobot_token": "",
+    "rollypay_api_key": "",
+    "rollypay_terminal_id": "",
+    "rollypay_signing_secret": "",
+    "webhook_host": "",
     "support_username": "support",
     "required_channel": "",
     "shop_name": "RINN STORE",

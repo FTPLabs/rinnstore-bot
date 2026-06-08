@@ -1,4 +1,7 @@
 import aiohttp
+import asyncio
+import hmac
+import hashlib
 import logging
 import time
 from decimal import Decimal
@@ -11,8 +14,9 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 CRYPTO_CURRENCY = "USDT"
+ROLLYPAY_BASE_URL = "https://api.rollypay.io/v1"
 
-# Кэш курса: обновляется каждые 5 минут через CryptoBot API
+# Кэш курса: обновляется каждые 5 минут
 _rate_cache: dict = {"rate": Decimal("0.011"), "updated_at": 0.0}
 
 
@@ -37,160 +41,150 @@ async def get_usdt_rate() -> Decimal:
 
         if data.get("ok"):
             for item in data.get("result", []):
-                # CryptoBot возвращает курс USDT/RUB как source=USDT, target=RUB
                 if item.get("source") == "USDT" and item.get("target") == "RUB":
                     rate_rub_per_usdt = Decimal(str(item["rate"]))
-                    # Инвертируем: RUB/USDT = 1 / (USDT/RUB)
-                    rub_to_usdt_rate = Decimal("1") / rate_rub_per_usdt
-                    _rate_cache["rate"] = rub_to_usdt_rate
-                    _rate_cache["updated_at"] = now
-                    logger.info(f"Курс USDT обновлён: 1 RUB = {rub_to_usdt_rate:.6f} USDT")
-                    return rub_to_usdt_rate
+                    if rate_rub_per_usdt > 0:
+                        rate = (Decimal("1") / rate_rub_per_usdt).quantize(Decimal("0.000001"))
+                        _rate_cache["rate"] = rate
+                        _rate_cache["updated_at"] = now
+                        logger.info(f"Курс RUB→USDT обновлён: {rate}")
+                        return rate
     except Exception as e:
-        logger.warning(f"Не удалось получить курс USDT: {e}, используем кэш")
+        logger.warning(f"Не удалось получить курс RUB→USDT: {e}")
 
     return _rate_cache["rate"]
 
 
-async def rub_to_usdt(rub_amount: Decimal) -> str:
-    rate = await get_usdt_rate()
-    usdt = rub_amount * rate
-    return str(round(usdt, 2))
+async def get_payment_by_order(session: AsyncSession, order_id: int) -> Payment | None:
+    result = await session.execute(
+        select(Payment)
+        .where(Payment.order_id == order_id, Payment.status == "pending")
+        .order_by(Payment.created_at.desc())
+    )
+    return result.scalars().first()
 
+
+async def get_payment_by_order_provider(
+    session: AsyncSession, order_id: int, provider: str
+) -> Payment | None:
+    result = await session.execute(
+        select(Payment).where(
+            Payment.order_id == order_id,
+            Payment.provider == provider,
+            Payment.status == "pending",
+        ).order_by(Payment.created_at.desc())
+    )
+    return result.scalars().first()
+
+
+# ─── CRYPTOBOT ─────────────────────────────────────────────────────────────────
 
 async def create_cryptobot_invoice(session: AsyncSession, order: Order) -> Payment | None:
-    amount_usdt = await rub_to_usdt(order.total_amount)
-
-    payload = {
-        "currency_type": "crypto",
-        "crypto_asset": CRYPTO_CURRENCY,
-        "amount": amount_usdt,
-        "description": f"Заказ #{order.id}",
-        "payload": str(order.id),
-        "allow_comments": False,
-        "allow_anonymous": False,
-        "expires_in": 3600,
-    }
-
     from ..services.settings_service import get_cached
     token = get_cached("cryptobot_token") or settings.cryptobot_token
     if not token:
+        logger.error("CRYPTOBOT_TOKEN не задан")
         return None
 
-    headers = {"Crypto-Pay-API-Token": token}
+    rate = await get_usdt_rate()
+    amount_usdt = (order.total_amount * rate).quantize(Decimal("0.01"))
+    if amount_usdt <= 0:
+        amount_usdt = Decimal("0.01")
 
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as http:
             async with http.post(
                 f"{settings.cryptobot_api_url}/createInvoice",
-                json=payload,
-                headers=headers,
+                headers={"Crypto-Pay-API-Token": token},
+                json={
+                    "asset": CRYPTO_CURRENCY,
+                    "amount": str(amount_usdt),
+                    "payload": str(order.id),
+                    "description": f"Заказ #{order.id}",
+                    "expires_in": 3600,
+                },
             ) as resp:
                 data = await resp.json()
     except Exception as e:
-        logger.error(f"CryptoBot createInvoice error: {e}")
+        logger.error(f"CryptoBot API error: {e}")
         return None
 
     if not data.get("ok"):
         logger.error(f"CryptoBot createInvoice failed: {data}")
         return None
 
-    result_data = data["result"]
-
+    inv = data["result"]
     payment = Payment(
         order_id=order.id,
         provider="cryptobot",
-        provider_invoice_id=str(result_data["invoice_id"]),
-        amount=Decimal(amount_usdt),
+        provider_invoice_id=str(inv["invoice_id"]),
+        amount=amount_usdt,
         currency=CRYPTO_CURRENCY,
         status="pending",
-        pay_url=result_data["bot_invoice_url"],
-        payload=result_data,
+        pay_url=inv.get("bot_invoice_url") or inv.get("pay_url"),
+        payload=inv,
     )
     session.add(payment)
     await session.commit()
-    await session.refresh(payment)
     return payment
 
 
 async def check_cryptobot_invoice(invoice_id: str) -> str:
-    """Проверяет статус инвойса. Возвращает: active | paid | expired | cancelled | error"""
     from ..services.settings_service import get_cached
     token = get_cached("cryptobot_token") or settings.cryptobot_token
     if not token:
         return "error"
-
-    headers = {"Crypto-Pay-API-Token": token}
-    params = {"invoice_ids": invoice_id}
-
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as http:
             async with http.get(
                 f"{settings.cryptobot_api_url}/getInvoices",
-                params=params,
-                headers=headers,
+                headers={"Crypto-Pay-API-Token": token},
+                params={"invoice_ids": invoice_id},
             ) as resp:
                 data = await resp.json()
+        if data.get("ok"):
+            items = data["result"].get("items", [])
+            if items:
+                return items[0].get("status", "unknown")
     except Exception as e:
-        logger.error(f"CryptoBot getInvoices error: {e}")
-        return "error"
-
-    if not data.get("ok"):
-        return "error"
-
-    items = data["result"].get("items", [])
-    if not items:
-        return "not_found"
-
-    return items[0].get("status", "unknown")
-
-
-async def get_payment_by_order(session: AsyncSession, order_id: int) -> Payment | None:
-    result = await session.execute(
-        select(Payment).where(Payment.order_id == order_id).order_by(Payment.created_at.desc())
-    )
-    return result.scalars().first()
+        logger.error(f"CryptoBot check error: {e}")
+    return "error"
 
 
 async def mark_payment_paid(session: AsyncSession, payment: Payment) -> None:
     payment.status = "paid"
     payment.paid_at = datetime.now(timezone.utc)
-    await session.execute(
-        update(Order).where(Order.id == payment.order_id).values(status="paid")
-    )
+    result = await session.execute(select(Order).where(Order.id == payment.order_id))
+    order = result.scalar_one_or_none()
+    if order:
+        order.status = "paid"
     await session.commit()
 
 
 async def process_cryptobot_webhook(session: AsyncSession, data: dict) -> bool:
-    """
-    Обрабатывает webhook от CryptoBot. Идемпотентно — проверяет по invoice_id.
-    """
-    update_type = data.get("update_type")
-    if update_type != "invoice_paid":
+    if data.get("update_type") != "invoice_paid":
         return False
 
     payload_data = data.get("payload", {})
     invoice_id = str(payload_data.get("invoice_id", ""))
-    idempotency_key = f"cryptobot_{invoice_id}"
-
-    exists = await session.execute(
-        select(PaymentEvent).where(PaymentEvent.idempotency_key == idempotency_key)
-    )
-    if exists.scalar_one_or_none():
-        return False
 
     result = await session.execute(
-        select(Payment).where(
-            Payment.provider == "cryptobot",
-            Payment.provider_invoice_id == invoice_id,
-        )
+        select(Payment).where(Payment.provider_invoice_id == invoice_id)
     )
     payment = result.scalar_one_or_none()
     if not payment:
+        logger.warning(f"CryptoBot webhook: платёж {invoice_id} не найден")
         return False
-
     if payment.status == "paid":
-        return False
+        return True
+
+    idempotency_key = f"cryptobot_{invoice_id}"
+    existing = await session.execute(
+        select(PaymentEvent).where(PaymentEvent.idempotency_key == idempotency_key)
+    )
+    if existing.scalar_one_or_none():
+        logger.info(f"CryptoBot webhook: событие {idempotency_key} уже обработано")
+        return True
 
     event = PaymentEvent(
         payment_id=payment.id,
@@ -200,6 +194,188 @@ async def process_cryptobot_webhook(session: AsyncSession, data: dict) -> bool:
         idempotency_key=idempotency_key,
     )
     session.add(event)
-
     await mark_payment_paid(session, payment)
+    return True
+
+
+# ─── ROLLYPAY ──────────────────────────────────────────────────────────────────
+
+def verify_rollypay_signature(body: bytes, signing_secret: str, signature: str) -> bool:
+    """Проверяет HMAC-SHA256 подпись вебхука RollyPay."""
+    try:
+        expected = hmac.new(
+            signing_secret.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(expected, signature.lower())
+    except Exception as e:
+        logger.error(f"RollyPay signature verify error: {e}")
+        return False
+
+
+async def _rollypay_request(
+    method: str,
+    path: str,
+    api_key: str,
+    **kwargs,
+) -> tuple[int, dict]:
+    """Выполняет HTTP-запрос к RollyPay API."""
+    url = f"{ROLLYPAY_BASE_URL}{path}"
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as http:
+            req = getattr(http, method.lower())
+            async with req(url, headers={"X-API-Key": api_key}, **kwargs) as resp:
+                try:
+                    data = await resp.json()
+                except Exception:
+                    data = {}
+                return resp.status, data
+    except asyncio.TimeoutError:
+        logger.error(f"RollyPay API timeout: {method} {url}")
+        return 0, {}
+    except Exception as e:
+        logger.error(f"RollyPay API error {method} {url}: {e}")
+        return 0, {}
+
+
+async def create_rollypay_invoice(
+    session: AsyncSession,
+    order: Order,
+    webhook_host: str,
+    user_id: int | None = None,
+) -> Payment | None:
+    """Создаёт платёж через RollyPay SDK (рублёвый, СБП)."""
+    from ..services.settings_service import get_cached
+
+    api_key = get_cached("rollypay_api_key") or settings.rollypay_api_key
+    if not api_key:
+        logger.error("RollyPay: api_key не задан")
+        return None
+
+    host = webhook_host.rstrip("/")
+
+    payload = {
+        "amount": str(order.total_amount),
+        "order_id": str(order.id),
+        "payment_method": "sbp",
+        "description": f"Заказ #{order.id} · RINN STORE",
+        "redirect_url": f"https://t.me/rinnstoreee_bot",
+    }
+    if user_id:
+        payload["customer_id"] = str(user_id)
+
+    # Пробуем добавить callback_url если есть webhook_host
+    if host:
+        payload["callback_url"] = f"{host}/webhook/rollypay"
+
+    status_code, resp_data = await _rollypay_request(
+        "POST", "/payments", api_key, json=payload
+    )
+
+    if status_code not in (200, 201):
+        logger.error(f"RollyPay createPayment failed {status_code}: {resp_data}")
+        return None
+
+    pay_url = (
+        resp_data.get("payment_url")
+        or resp_data.get("pay_url")
+        or resp_data.get("url")
+        or resp_data.get("link")
+    )
+    payment_id = str(
+        resp_data.get("payment_id")
+        or resp_data.get("id")
+        or f"rp_{order.id}"
+    )
+
+    if not pay_url:
+        logger.error(f"RollyPay: нет payment_url в ответе: {resp_data}")
+        return None
+
+    payment = Payment(
+        order_id=order.id,
+        provider="rollypay",
+        provider_invoice_id=payment_id,
+        amount=order.total_amount,
+        currency="RUB",
+        status="pending",
+        pay_url=pay_url,
+        payload=resp_data,
+    )
+    session.add(payment)
+    await session.commit()
+    logger.info(f"RollyPay invoice создан: order={order.id}, id={payment_id}")
+    return payment
+
+
+async def check_rollypay_payment(payment_id: str, api_key: str) -> str:
+    """Проверяет статус платежа RollyPay. Возвращает: paid | created | failed | error"""
+    status_code, data = await _rollypay_request(
+        "GET", f"/payments/{payment_id}", api_key
+    )
+    if status_code == 200:
+        status = (data.get("status") or "").lower()
+        if status in ("paid", "success", "completed"):
+            return "paid"
+        if status in ("created", "pending", "waiting"):
+            return "created"
+        if status in ("failed", "cancelled", "expired"):
+            return "failed"
+        return status or "unknown"
+    return "error"
+
+
+async def process_rollypay_webhook(session: AsyncSession, data: dict) -> bool:
+    """Обрабатывает вебхук от RollyPay."""
+    status = (data.get("status") or "").lower()
+    payment_id = str(data.get("payment_id") or data.get("id") or "")
+    order_id_str = str(data.get("order_id") or "")
+
+    if status not in ("paid", "success", "completed"):
+        logger.info(f"RollyPay webhook: статус {status!r} — пропускаем")
+        return False
+
+    result = await session.execute(
+        select(Payment).where(
+            Payment.provider == "rollypay",
+            Payment.provider_invoice_id == payment_id,
+        )
+    )
+    payment = result.scalars().first()
+
+    if not payment and order_id_str.isdigit():
+        result = await session.execute(
+            select(Payment).where(
+                Payment.order_id == int(order_id_str),
+                Payment.provider == "rollypay",
+            )
+        )
+        payment = result.scalars().first()
+
+    if not payment:
+        logger.warning(f"RollyPay webhook: платёж не найден (id={payment_id}, order={order_id_str})")
+        return False
+
+    if payment.status == "paid":
+        return True
+
+    idempotency_key = f"rollypay_{payment_id or order_id_str}_{status}"
+    existing = await session.execute(
+        select(PaymentEvent).where(PaymentEvent.idempotency_key == idempotency_key)
+    )
+    if existing.scalar_one_or_none():
+        logger.info(f"RollyPay webhook: событие {idempotency_key} уже обработано")
+        return True
+
+    event = PaymentEvent(
+        payment_id=payment.id,
+        event_type="payment_paid",
+        payload=data,
+        processed=True,
+        idempotency_key=idempotency_key,
+    )
+    session.add(event)
+    await mark_payment_paid(session, payment)
+    logger.info(f"RollyPay платёж {payment_id} для заказа #{payment.order_id} подтверждён")
     return True

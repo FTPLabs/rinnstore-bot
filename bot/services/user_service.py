@@ -3,6 +3,7 @@ import string
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from ..models import User
 
 logger = logging.getLogger(__name__)
@@ -39,10 +40,16 @@ async def get_or_create_user(session: AsyncSession, tg_user, referred_by_code: s
             )
             session.add(user)
             await session.commit()
-        except Exception:
+        except IntegrityError:
+            # ИСПРАВЛЕНИЕ #6: ловим только IntegrityError (race condition при одновременном /start)
             await session.rollback()
             result = await session.execute(select(User).where(User.id == tg_user.id))
             user = result.scalar_one()
+        except Exception as e:
+            # ИСПРАВЛЕНИЕ #6: логируем реальные ошибки, не глотаем молча
+            logger.error(f"Ошибка создания пользователя {tg_user.id}: {e}", exc_info=True)
+            await session.rollback()
+            raise
     else:
         changed = (
             user.username != tg_user.username

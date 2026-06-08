@@ -99,9 +99,14 @@ async def get_user_orders(session: AsyncSession, user_id: int, limit: int = 10) 
 
 
 async def cancel_order(session: AsyncSession, order_id: int) -> None:
-    result = await session.execute(select(Order).where(Order.id == order_id))
+    result = await session.execute(
+        select(Order).where(Order.id == order_id).with_for_update()
+    )
     order = result.scalar_one_or_none()
-    if order and order.promo_code_id:
+    if not order:
+        return
+    # Откатываем счётчик промокода
+    if order.promo_code_id:
         await session.execute(
             update(PromoCode)
             .where(PromoCode.id == order.promo_code_id, PromoCode.used_count > 0)
@@ -110,10 +115,14 @@ async def cancel_order(session: AsyncSession, order_id: int) -> None:
     await session.execute(
         update(Order).where(Order.id == order_id).values(status="cancelled")
     )
+    # ИСПРАВЛЕНИЕ #3: сбрасываем только непроданные элементы (is_sold == False)
     await session.execute(
-        update(ProductItem).where(ProductItem.order_id == order_id).values(
-            is_reserved=False, is_sold=False, order_id=None, reserved_until=None
+        update(ProductItem)
+        .where(
+            ProductItem.order_id == order_id,
+            ProductItem.is_sold == False,  # не трогаем уже проданные
         )
+        .values(is_reserved=False, order_id=None, reserved_until=None)
     )
     await session.commit()
 
@@ -158,15 +167,18 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
 
         for _ in range(order_item.quantity):
             if is_unlimited:
+                # ИСПРАВЛЕНИЕ #4: для unlimited тоже фильтруем is_reserved == False
                 pi_result = await session.execute(
                     select(ProductItem).where(
                         ProductItem.product_id == order_item.product_id,
                         ProductItem.is_sold == False,
+                        ProductItem.is_reserved == False,
                     ).limit(1).with_for_update(skip_locked=True)
                 )
                 pi = pi_result.scalar_one_or_none()
                 if pi:
                     pi.is_sold = True
+                    pi.is_reserved = False
                     pi.sold_at = datetime.now(timezone.utc)
                     pi.order_id = order_id
                     delivered = DeliveredItem(
