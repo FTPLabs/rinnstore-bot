@@ -61,9 +61,16 @@ async def get_product(session: AsyncSession, product_id: int) -> Product | None:
 async def get_stock_count(session: AsyncSession, product_id: int) -> int:
     product = await get_product(session, product_id)
     if product and product.is_unlimited:
+        # FIX: считаем только непроданные items — после фикса deliver_order
+        # безлимитные ключи тоже помечаются is_sold=True, поэтому старый
+        # подсчёт (все items без фильтра) всегда возвращал UNLIMITED_STOCK
+        # даже когда все ключи уже выданы
         item_result = await session.execute(
             select(func.count(ProductItem.id))
-            .where(ProductItem.product_id == product_id)
+            .where(
+                ProductItem.product_id == product_id,
+                ProductItem.is_sold == False,
+            )
         )
         if (item_result.scalar() or 0) > 0:
             return UNLIMITED_STOCK
