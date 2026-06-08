@@ -19,10 +19,6 @@ from ...utils.emoji import (
 router = Router()
 
 
-class UserSearchState(StatesGroup):
-    waiting_user_id = State()
-
-
 class UserBalanceState(StatesGroup):
     waiting_amount = State()
     waiting_target_id = State()
