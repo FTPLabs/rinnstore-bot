@@ -20,6 +20,7 @@ STATUS_MAP = {
     "paid": f"{OK} Оплачен",
     "delivered": f"{KEY} Выдан",
     "cancelled": f"{FAIL} Отменён",
+    "partial": "⚠️ Частично выдан",
 }
 
 
