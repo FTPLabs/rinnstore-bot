@@ -187,6 +187,17 @@ async def cb_subcat(call: CallbackQuery, session: AsyncSession, user: User):
     product_list = await get_products_in_category(session, cat_id)
     parent_cat_id = category.parent_id
 
+    # FIX: добавлен пустой стейт — ранее при пустом списке показывалось
+    # "Выберите товар:" без единой кнопки-товара, только «Назад»
+    if not product_list:
+        await call.message.edit_text(
+            f"<b>📁 {category.name}</b>\n\nТоваров пока нет.",
+            reply_markup=products_kb([], cat_id, parent_cat_id=parent_cat_id),
+            parse_mode="HTML"
+        )
+        await call.answer()
+        return
+
     await call.message.edit_text(
         f"<b>📁 {category.name}</b>\n\nВыберите товар:",
         reply_markup=products_kb(product_list, cat_id, parent_cat_id=parent_cat_id),
