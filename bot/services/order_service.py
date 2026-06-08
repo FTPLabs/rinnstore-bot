@@ -22,6 +22,7 @@ async def create_order(
         total += Decimal(str(item["price"])) * item["qty"]
 
     if promo_code:
+        # FIX: SELECT FOR UPDATE исключает race condition при одновременном применении промокода
         result = await session.execute(
             select(PromoCode).where(
                 PromoCode.code == promo_code.upper(),
@@ -30,7 +31,7 @@ async def create_order(
                     PromoCode.expires_at == None,
                     PromoCode.expires_at > datetime.now(timezone.utc),
                 ),
-            )
+            ).with_for_update()
         )
         promo = result.scalar_one_or_none()
         if promo and total >= (promo.min_order_amount or Decimal("0")):
@@ -97,6 +98,16 @@ async def get_user_orders(session: AsyncSession, user_id: int, limit: int = 10) 
 
 
 async def cancel_order(session: AsyncSession, order_id: int) -> None:
+    # FIX: Возвращаем использование промокода при отмене заказа
+    result = await session.execute(select(Order).where(Order.id == order_id))
+    order = result.scalar_one_or_none()
+    if order and order.promo_code_id:
+        await session.execute(
+            update(PromoCode)
+            .where(PromoCode.id == order.promo_code_id, PromoCode.used_count > 0)
+            .values(used_count=PromoCode.used_count - 1)
+        )
+
     await session.execute(
         update(Order).where(Order.id == order_id).values(status="cancelled")
     )
@@ -150,15 +161,19 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
 
         for _ in range(order_item.quantity):
             if is_unlimited:
-                # Безлимитный товар: берём первый доступный ключ (не проданный другому заказу)
+                # FIX: Безлимитный товар — берём с блокировкой и помечаем как проданный.
+                # Без is_sold=True один и тот же ключ выдавался бы всем покупателям бесконечно.
                 pi_result = await session.execute(
                     select(ProductItem).where(
                         ProductItem.product_id == order_item.product_id,
                         ProductItem.is_sold == False,
-                    ).limit(1)
+                    ).limit(1).with_for_update(skip_locked=True)
                 )
                 pi = pi_result.scalar_one_or_none()
                 if pi:
+                    pi.is_sold = True
+                    pi.sold_at = datetime.now(timezone.utc)
+                    pi.order_id = order_id
                     delivered = DeliveredItem(
                         order_id=order_id,
                         order_item_id=order_item.id,
