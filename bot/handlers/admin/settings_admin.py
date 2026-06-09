@@ -14,6 +14,10 @@ from ...services.admin_service import is_admin, log_action
 from ...services.settings_service import get_setting, set_setting, get_all_settings
 from ...utils.backup import create_backup, list_backups
 from ...config import settings as env_settings
+from ...utils.emoji import (
+    SETTINGS, CARD, SUPPORT, BROADCAST, HOME, SHIELD, DELETE, COINS,
+    DISK, TIMER, BACK, KEY, LOCK, GLOBAL, OK, FAIL, plain,
+)
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -39,37 +43,37 @@ def settings_main_kb() -> object:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="₿ CryptoBot Token", callback_data="set_cryptobot_token"),
-        InlineKeyboardButton(text="💳 RollyPay", callback_data="set_rollypay_menu"),
+        InlineKeyboardButton(text=f"{plain(CARD)} RollyPay", callback_data="set_rollypay_menu"),
     )
     builder.row(
-        InlineKeyboardButton(text="💬 Поддержка", callback_data="set_support_username"),
-        InlineKeyboardButton(text="📢 Канал", callback_data="set_required_channel"),
+        InlineKeyboardButton(text=f"{plain(SUPPORT)} Поддержка", callback_data="set_support_username"),
+        InlineKeyboardButton(text=f"{plain(BROADCAST)} Канал", callback_data="set_required_channel"),
     )
     builder.row(
-        InlineKeyboardButton(text="🏪 Название магазина", callback_data="set_shop_name"),
+        InlineKeyboardButton(text=f"{plain(HOME)} Название магазина", callback_data="set_shop_name"),
     )
     builder.row(
-        InlineKeyboardButton(text="👑 Добавить админа", callback_data="admin_add_admin"),
-        InlineKeyboardButton(text="🗑 Убрать админа", callback_data="admin_remove_admin"),
+        InlineKeyboardButton(text=f"{plain(SHIELD)} Добавить админа", callback_data="admin_add_admin"),
+        InlineKeyboardButton(text=f"{plain(DELETE)} Убрать админа", callback_data="admin_remove_admin"),
     )
     builder.row(
-        InlineKeyboardButton(text="💰 Выдать баланс", callback_data="admin_give_balance"),
+        InlineKeyboardButton(text=f"{plain(COINS)} Выдать баланс", callback_data="admin_give_balance"),
     )
     builder.row(
-        InlineKeyboardButton(text="💾 Резервная копия", callback_data="admin_backup_now"),
-        InlineKeyboardButton(text="⏱ Интервал", callback_data="set_backup_interval"),
+        InlineKeyboardButton(text=f"{plain(DISK)} Резервная копия", callback_data="admin_backup_now"),
+        InlineKeyboardButton(text=f"{plain(TIMER)} Интервал", callback_data="set_backup_interval"),
     )
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_main"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"))
     return builder.as_markup()
 
 
 def rollypay_menu_kb() -> object:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔑 API Key", callback_data="set_rollypay_api_key"))
-    builder.row(InlineKeyboardButton(text="🖥 Terminal ID", callback_data="set_rollypay_terminal_id"))
-    builder.row(InlineKeyboardButton(text="🔐 Signing Secret", callback_data="set_rollypay_signing_secret"))
-    builder.row(InlineKeyboardButton(text="🌐 Webhook Host", callback_data="set_rollypay_webhook_host"))
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_settings"))
+    builder.row(InlineKeyboardButton(text=f"{plain(KEY)} API Key", callback_data="set_rollypay_api_key"))
+    builder.row(InlineKeyboardButton(text=f"{plain(SETTINGS)} Terminal ID", callback_data="set_rollypay_terminal_id"))
+    builder.row(InlineKeyboardButton(text=f"{plain(LOCK)} Signing Secret", callback_data="set_rollypay_signing_secret"))
+    builder.row(InlineKeyboardButton(text=f"{plain(GLOBAL)} Webhook Host", callback_data="set_rollypay_webhook_host"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_settings"))
     return builder.as_markup()
 
 
@@ -77,23 +81,23 @@ async def show_settings(call: CallbackQuery, session: AsyncSession):
     all_s = await get_all_settings(session)
 
     token = all_s.get("cryptobot_token", "")
-    token_display = f"{token[:8]}..." if len(token) > 8 else ("✅" if token else "❌")
+    token_display = f"{token[:8]}..." if len(token) > 8 else (plain(OK) if token else plain(FAIL))
 
     rp_key = all_s.get("rollypay_api_key", "")
-    rp_display = f"{rp_key[:8]}..." if len(rp_key) > 8 else ("✅" if rp_key else "❌")
+    rp_display = f"{rp_key[:8]}..." if len(rp_key) > 8 else (plain(OK) if rp_key else plain(FAIL))
 
     channel = all_s.get("required_channel", "") or "не задан"
     webhook_host = all_s.get("webhook_host", env_settings.webhook_host) or "не задан"
 
     text = (
-        "<b>⚙️ Настройки</b>\n\n"
+        f"{SETTINGS} <b>Настройки</b>\n\n"
         f"₿ CryptoBot: <code>{token_display}</code>\n"
-        f"💳 RollyPay API: <code>{rp_display}</code>\n"
-        f"🌐 Webhook: {webhook_host}\n"
-        f"💬 Поддержка: @{all_s.get('support_username', 'support')}\n"
-        f"📢 Канал: {channel}\n"
-        f"🏪 Магазин: {all_s.get('shop_name', 'RINN STORE')}\n"
-        f"💾 Бэкап каждые: {all_s.get('backup_interval', '6')}ч"
+        f"{CARD} RollyPay API: <code>{rp_display}</code>\n"
+        f"{GLOBAL} Webhook: {webhook_host}\n"
+        f"{SUPPORT} Поддержка: @{all_s.get('support_username', 'support')}\n"
+        f"{BROADCAST} Канал: {channel}\n"
+        f"{HOME} Магазин: {all_s.get('shop_name', 'RINN STORE')}\n"
+        f"{DISK} Бэкап каждые: {all_s.get('backup_interval', '6')}ч"
     )
     await call.message.edit_text(text, reply_markup=settings_main_kb(), parse_mode="HTML")
     await call.answer()
@@ -134,7 +138,7 @@ async def msg_cryptobot_token(message: Message, session: AsyncSession, user: Use
     await set_setting(session, "cryptobot_token", token)
     await log_action(session, user.id, "set_setting", "setting", None, {"key": "cryptobot_token"})
     await state.clear()
-    await message.answer("✅ CryptoBot Token сохранён.", reply_markup=settings_main_kb())
+    await message.answer(f"{plain(OK)} CryptoBot Token сохранён.", reply_markup=settings_main_kb())
 
 
 # ─── ROLLYPAY ──────────────────────────────────────────────────────────────────
@@ -144,8 +148,7 @@ async def cb_rollypay_menu(call: CallbackQuery, session: AsyncSession, user: Use
     if not await is_admin(session, user.id):
         return await call.answer("Нет доступа", show_alert=True)
     await call.message.edit_text(
-        "<b>💳 Настройки RollyPay</b>\n\n"
-        "Выберите что настроить:",
+        f"{CARD} <b>Настройки RollyPay</b>\n\nВыберите что настроить:",
         reply_markup=rollypay_menu_kb(), parse_mode="HTML"
     )
     await call.answer()
@@ -171,7 +174,7 @@ async def msg_rp_api_key(message: Message, session: AsyncSession, user: User, st
     await set_setting(session, "rollypay_api_key", val)
     await log_action(session, user.id, "set_setting", "setting", None, {"key": "rollypay_api_key"})
     await state.clear()
-    await message.answer("✅ RollyPay API Key сохранён.", reply_markup=rollypay_menu_kb())
+    await message.answer(f"{plain(OK)} RollyPay API Key сохранён.", reply_markup=rollypay_menu_kb())
 
 
 @router.callback_query(F.data == "set_rollypay_terminal_id")
@@ -193,7 +196,7 @@ async def msg_rp_terminal(message: Message, session: AsyncSession, user: User, s
     val = message.text.strip()
     await set_setting(session, "rollypay_terminal_id", val)
     await state.clear()
-    await message.answer("✅ RollyPay Terminal ID сохранён.", reply_markup=rollypay_menu_kb())
+    await message.answer(f"{plain(OK)} RollyPay Terminal ID сохранён.", reply_markup=rollypay_menu_kb())
 
 
 @router.callback_query(F.data == "set_rollypay_signing_secret")
@@ -216,7 +219,7 @@ async def msg_rp_secret(message: Message, session: AsyncSession, user: User, sta
     await set_setting(session, "rollypay_signing_secret", val)
     await log_action(session, user.id, "set_setting", "setting", None, {"key": "rollypay_signing_secret"})
     await state.clear()
-    await message.answer("✅ Signing Secret сохранён.", reply_markup=rollypay_menu_kb())
+    await message.answer(f"{plain(OK)} Signing Secret сохранён.", reply_markup=rollypay_menu_kb())
 
 
 @router.callback_query(F.data == "set_rollypay_webhook_host")
@@ -244,7 +247,7 @@ async def msg_rp_webhook_host(message: Message, session: AsyncSession, user: Use
     await set_setting(session, "webhook_host", val)
     await state.clear()
     await message.answer(
-        f"✅ Webhook Host сохранён.\n\n"
+        f"{plain(OK)} Webhook Host сохранён.\n\n"
         f"Укажите в RollyPay Callback URL:\n"
         f"<code>{val}/webhook/rollypay</code>",
         parse_mode="HTML", reply_markup=rollypay_menu_kb()
@@ -273,7 +276,7 @@ async def msg_support_username(message: Message, session: AsyncSession, user: Us
     val = message.text.strip().lstrip("@")
     await set_setting(session, "support_username", val)
     await state.clear()
-    await message.answer(f"✅ Поддержка: @{val}", reply_markup=settings_main_kb())
+    await message.answer(f"{plain(OK)} Поддержка: @{val}", reply_markup=settings_main_kb())
 
 
 @router.callback_query(F.data == "set_required_channel")
@@ -300,7 +303,7 @@ async def msg_required_channel(message: Message, session: AsyncSession, user: Us
         val = ""
     await set_setting(session, "required_channel", val)
     await state.clear()
-    await message.answer(f"✅ Подписка: {val or 'отключена'}", reply_markup=settings_main_kb())
+    await message.answer(f"{plain(OK)} Подписка: {val or 'отключена'}", reply_markup=settings_main_kb())
 
 
 @router.callback_query(F.data == "set_shop_name")
@@ -323,7 +326,7 @@ async def msg_shop_name(message: Message, session: AsyncSession, user: User, sta
     val = message.text.strip()
     await set_setting(session, "shop_name", val)
     await state.clear()
-    await message.answer(f"✅ Название: {val}", reply_markup=settings_main_kb())
+    await message.answer(f"{plain(OK)} Название: {val}", reply_markup=settings_main_kb())
 
 
 @router.callback_query(F.data == "set_backup_interval")
@@ -350,7 +353,7 @@ async def cb_backup_interval_set(call: CallbackQuery, session: AsyncSession, use
         return await call.answer("Нет доступа", show_alert=True)
     hours = call.data.split("_")[-1]
     await set_setting(session, "backup_interval", hours)
-    await call.answer(f"✅ Интервал: {hours}ч")
+    await call.answer(f"{plain(OK)} Интервал: {hours}ч")
     await show_settings(call, session)
 
 
@@ -363,11 +366,11 @@ async def cb_backup_now(call: CallbackQuery, session: AsyncSession, user: User):
     backup_list = "\n".join(f"· {b['name']} ({b['size_kb']} KB)" for b in backups) or "нет"
     path = await create_backup(env_settings.database_url)
     if path:
-        msg = f"✅ Создана:\n<code>{path}</code>\n\n<b>Все копии:</b>\n{backup_list}"
+        msg = f"{OK} Создана:\n<code>{path}</code>\n\n<b>Все копии:</b>\n{backup_list}"
     else:
-        msg = f"❌ Ошибка создания.\n\n<b>Существующие:</b>\n{backup_list}"
+        msg = f"{FAIL} Ошибка создания.\n\n<b>Существующие:</b>\n{backup_list}"
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_settings"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_settings"))
     await call.message.edit_text(msg, reply_markup=builder.as_markup(), parse_mode="HTML")
 
 
@@ -408,7 +411,7 @@ async def msg_add_admin(message: Message, session: AsyncSession, user: User, sta
     await session.commit()
     await log_action(session, user.id, "add_admin", "admin", new_id, {})
     await state.clear()
-    await message.answer(f"✅ Администратор {new_id} добавлен.", reply_markup=settings_main_kb())
+    await message.answer(f"{plain(OK)} Администратор {new_id} добавлен.", reply_markup=settings_main_kb())
 
 
 @router.callback_query(F.data == "admin_remove_admin")
@@ -445,7 +448,7 @@ async def msg_remove_admin(message: Message, session: AsyncSession, user: User, 
     await session.commit()
     await log_action(session, user.id, "remove_admin", "admin", target_id, {})
     await state.clear()
-    await message.answer(f"✅ Администратор {target_id} удалён.", reply_markup=settings_main_kb())
+    await message.answer(f"{plain(OK)} Администратор {target_id} удалён.", reply_markup=settings_main_kb())
 
 
 @router.callback_query(F.data == "admin_give_balance")
@@ -508,7 +511,7 @@ async def msg_give_balance_amount(message: Message, session: AsyncSession, user:
     await log_action(session, user.id, "give_balance", "user", target_id, {"amount": str(amount)})
     await state.clear()
     await message.answer(
-        f"✅ Начислено {amount} ₽ пользователю {target.first_name or target_id}.\n"
+        f"{plain(OK)} Начислено {amount} ₽ пользователю {target.first_name or target_id}.\n"
         f"Новый баланс: {target.balance} ₽",
         reply_markup=settings_main_kb()
     )
