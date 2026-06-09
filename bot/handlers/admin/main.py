@@ -1,13 +1,13 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
 from ...models import User
 from ...keyboards.admin import admin_main_kb
 from ...services.admin_service import is_admin, get_stats
+from ...utils.emoji import USERS, ORDERS, COINS, KEY, STATS, BACK, HOME, plain
 
 router = Router()
 
@@ -15,10 +15,10 @@ router = Router()
 def stats_text(stats: dict) -> str:
     return (
         f"<b>RINN STORE · Админ</b>\n\n"
-        f"👥 {stats['total_users']} пользователей\n"
-        f"📋 {stats['paid_orders']}/{stats['total_orders']} заказов оплачено\n"
-        f"💰 {stats['total_revenue']} ₽ выручка\n"
-        f"🔑 {stats['available_items']} ключей в наличии"
+        f"{USERS} {stats['total_users']} пользователей\n"
+        f"{ORDERS} {stats['paid_orders']}/{stats['total_orders']} заказов оплачено\n"
+        f"{COINS} {stats['total_revenue']} ₽ выручка\n"
+        f"{KEY} {stats['available_items']} ключей в наличии"
     )
 
 
@@ -58,7 +58,7 @@ async def cb_admin_stats(call: CallbackQuery, session: AsyncSession, user: User,
     await state.clear()
     stats = await get_stats(session)
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data="admin_main"))
-    builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"))
+    builder.row(InlineKeyboardButton(text=f"{plain(HOME)} Главное меню", callback_data="main_menu"))
     await call.message.edit_text(stats_text(stats), reply_markup=builder.as_markup(), parse_mode="HTML")
     await call.answer()

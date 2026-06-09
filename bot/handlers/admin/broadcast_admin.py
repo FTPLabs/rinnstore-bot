@@ -1,17 +1,16 @@
 import asyncio
 import logging
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ...models import User
 from ...keyboards.admin import cancel_kb
 from ...services.admin_service import is_admin, log_action
-from ...utils.emoji import BROADCAST, OK, FAIL, STATS, plain
+from ...utils.emoji import BROADCAST, OK, FAIL, STATS, WARN, plain
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -20,7 +19,6 @@ BATCH_SIZE = 25
 BATCH_DELAY = 1.1
 PROGRESS_EVERY = 50
 
-# Глобальный флаг — защита от параллельного запуска рассылки
 _broadcast_running = False
 
 
@@ -45,7 +43,7 @@ async def cb_admin_broadcast(call: CallbackQuery, state: FSMContext, session: As
         f"Поддерживается <b>HTML-разметка</b>.\n\n"
         f"Рассылка пойдёт <b>всем активным пользователям</b>.",
         reply_markup=cancel_kb(),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
     await call.answer()
 
@@ -54,7 +52,7 @@ async def cb_admin_broadcast(call: CallbackQuery, state: FSMContext, session: As
 async def process_broadcast_text(message: Message, state: FSMContext):
     text = message.text or message.caption or ""
     if not text.strip():
-        await message.answer(f"{FAIL} Сообщение пустое. Введите текст:", reply_markup=cancel_kb())
+        await message.answer(f"{FAIL} Сообщение пустое. Введите текст:", reply_markup=cancel_kb(), parse_mode="HTML")
         return
 
     await state.update_data(broadcast_text=text)
@@ -73,14 +71,14 @@ async def process_broadcast_text(message: Message, state: FSMContext):
         f"{'━' * 16}\n\n"
         f"Отправить?",
         reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
 
 
 @router.callback_query(F.data == "confirm_broadcast", BroadcastState.confirm)
 async def process_confirm_broadcast(
     call: CallbackQuery, session: AsyncSession, user: User,
-    state: FSMContext, bot: Bot
+    state: FSMContext, bot: Bot,
 ):
     global _broadcast_running
 
@@ -94,9 +92,7 @@ async def process_confirm_broadcast(
     text = data.get("broadcast_text", "")
     await state.clear()
 
-    result = await session.execute(
-        select(User.id).where(User.is_banned == False)
-    )
+    result = await session.execute(select(User.id).where(User.is_banned == False))
     user_ids = result.scalars().all()
     total = len(user_ids)
 
@@ -105,7 +101,7 @@ async def process_confirm_broadcast(
         f"{BROADCAST} <b>Рассылка запущена</b>\n\n"
         f"Получателей: <b>{total}</b>\n"
         f"Прогресс: <b>0 / {total}</b>",
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
 
     sent = 0
@@ -115,22 +111,20 @@ async def process_confirm_broadcast(
             try:
                 await bot.send_message(uid, text, parse_mode="HTML")
                 sent += 1
-            except Exception as e:
+            except Exception as ex:
                 failed += 1
-                logger.debug(f"Broadcast: не удалось отправить {uid}: {e}")
+                logger.debug(f"Broadcast: не удалось отправить {uid}: {ex}")
 
-            # Пауза между батчами
             if (i + 1) % BATCH_SIZE == 0:
                 await asyncio.sleep(BATCH_DELAY)
 
-            # Обновление прогресса каждые PROGRESS_EVERY сообщений
             if (i + 1) % PROGRESS_EVERY == 0:
                 try:
                     await status_msg.edit_text(
                         f"{BROADCAST} <b>Рассылка...</b>\n\n"
                         f"Прогресс: <b>{i + 1} / {total}</b>\n"
-                        f"✅ Доставлено: <b>{sent}</b> | ❌ Ошибок: <b>{failed}</b>",
-                        parse_mode="HTML"
+                        f"{OK} Доставлено: <b>{sent}</b> · {FAIL} Ошибок: <b>{failed}</b>",
+                        parse_mode="HTML",
                     )
                 except Exception:
                     pass
@@ -140,13 +134,13 @@ async def process_confirm_broadcast(
     await log_action(session, user.id, "broadcast", details={"sent": sent, "failed": failed, "total": total})
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="◀️ В меню", callback_data="admin_main"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BROADCAST)} В меню", callback_data="admin_main"))
     await status_msg.edit_text(
         f"{OK} <b>Рассылка завершена</b>\n"
         f"{'━' * 16}\n\n"
         f"{STATS} Всего: <b>{total}</b>\n"
-        f"✅ Доставлено: <b>{sent}</b>\n"
-        f"❌ Не доставлено: <b>{failed}</b>",
+        f"{OK} Доставлено: <b>{sent}</b>\n"
+        f"{FAIL} Не доставлено: <b>{failed}</b>",
         reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )

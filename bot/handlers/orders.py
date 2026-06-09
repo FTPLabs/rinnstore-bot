@@ -5,16 +5,16 @@ from ..models import User
 from ..keyboards.user import orders_kb, order_detail_kb, back_to_menu_kb
 from ..services.order_service import get_user_orders, get_order, deliver_order
 from ..utils.helpers import parse_callback_int
-from ..utils.emoji import KEY, OK, FAIL
+from ..utils.emoji import KEY, OK, FAIL, WARN, CLOCK, plain
 
 router = Router()
 
 STATUS_MAP = {
-    "pending": "⏳ Ожидает оплаты",
-    "paid": "✅ Оплачен",
-    "delivered": "🔑 Выдан",
-    "cancelled": "✕ Отменён",
-    "partial": "⚠️ Частично выдан",
+    "pending":   f"{plain(CLOCK)} Ожидает оплаты",
+    "paid":      f"{plain(OK)} Оплачен",
+    "delivered": f"{plain(KEY)} Выдан",
+    "cancelled": f"{plain(FAIL)} Отменён",
+    "partial":   f"{plain(WARN)} Частично выдан",
 }
 
 
@@ -29,6 +29,7 @@ async def cb_my_orders(call: CallbackQuery, session: AsyncSession, user: User):
     await call.message.edit_text(
         "<b>Мои заказы</b>",
         reply_markup=orders_kb(orders),
+        parse_mode="HTML",
     )
     await call.answer()
 
@@ -58,7 +59,7 @@ async def cb_order_detail(call: CallbackQuery, session: AsyncSession, user: User
         f"Итого: <b>{order.total_amount} ₽</b>\n"
         f"Статус: {status_text}"
     )
-    await call.message.edit_text(text, reply_markup=order_detail_kb(order_id, order.status))
+    await call.message.edit_text(text, reply_markup=order_detail_kb(order_id, order.status), parse_mode="HTML")
     await call.answer()
 
 
@@ -73,8 +74,6 @@ async def cb_get_items(call: CallbackQuery, session: AsyncSession, user: User):
     if not order or order.user_id != user.id:
         await call.answer("Заказ не найден", show_alert=True)
         return
-    # FIX: добавлен статус "partial" — пользователь с частично выданным заказом
-    # не мог получить свои товары через эту кнопку
     if order.status not in ("paid", "delivered", "partial"):
         await call.answer("Заказ ещё не оплачен", show_alert=True)
         return
@@ -88,5 +87,6 @@ async def cb_get_items(call: CallbackQuery, session: AsyncSession, user: User):
     await call.message.edit_text(
         f"{OK} <b>Товары заказа #{order_id}</b>\n\n{items_text}",
         reply_markup=back_to_menu_kb(),
+        parse_mode="HTML",
     )
     await call.answer()

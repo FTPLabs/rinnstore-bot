@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +11,7 @@ from ...keyboards.admin import admin_promos_kb, admin_promo_detail_kb, cancel_kb
 from ...services.admin_service import is_admin, get_all_promos, create_promo, toggle_promo, log_action
 from ...utils.helpers import parse_callback_int
 from ...utils.emoji import (
-    PROMO, ADD, OK, FAIL, BACK, STATS, TAG
+    PROMO, ADD, OK, FAIL, BACK, STATS, TAG, COINS, CLOCK, INFINITY, PIN, plain
 )
 
 router = Router()
@@ -56,16 +57,16 @@ async def cb_admin_promo_detail(call: CallbackQuery, session: AsyncSession, user
     text = (
         f"{PROMO} <b>{promo.code}</b>\n"
         f"{'━' * 16}\n\n"
-        f"📌 Статус: {status}\n"
-        f"💰 Скидка: <b>{val}</b>\n"
+        f"{PIN} Статус: {status}\n"
+        f"{COINS} Скидка: <b>{val}</b>\n"
         f"{STATS} Использований: <b>{promo.used_count}</b>"
         + (f" / {promo.max_uses}" if promo.max_uses else "") + "\n"
-        f"⏰ Истекает: {expires}"
+        f"{CLOCK} Истекает: {expires}"
     )
     await call.message.edit_text(
         text,
         reply_markup=admin_promo_detail_kb(promo_id, promo.is_active),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
     await call.answer()
 
@@ -94,7 +95,7 @@ async def cb_admin_add_promo(call: CallbackQuery, state: FSMContext, session: As
         f"{ADD} <b>Новый промокод</b>\n\nВведите код (только латиница и цифры):\n\n"
         f"Пример: <code>SALE20</code>",
         reply_markup=cancel_kb(),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
     await call.answer()
 
@@ -105,12 +106,10 @@ async def process_promo_code_admin(message: Message, state: FSMContext, session:
         return
     code = message.text.strip().upper()
     if not code.replace("-", "").isalnum():
-        await message.answer(f"{FAIL} Код должен содержать только буквы и цифры.", reply_markup=cancel_kb())
+        await message.answer(f"{FAIL} Код должен содержать только буквы и цифры.", reply_markup=cancel_kb(), parse_mode="HTML")
         return
     await state.update_data(promo_code=code)
     await state.set_state(AdminPromoStates.waiting_discount_type)
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="% Процент", callback_data="apromo_type_percent"),
@@ -120,23 +119,23 @@ async def process_promo_code_admin(message: Message, state: FSMContext, session:
     await message.answer(
         f"{PROMO} Выберите тип скидки:",
         reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
 
 
 @router.callback_query(
     F.data.in_({"apromo_type_percent", "apromo_type_fixed"}),
-    AdminPromoStates.waiting_discount_type
+    AdminPromoStates.waiting_discount_type,
 )
 async def process_promo_type(call: CallbackQuery, state: FSMContext):
     dtype = "percent" if call.data == "apromo_type_percent" else "fixed"
     await state.update_data(discount_type=dtype)
     await state.set_state(AdminPromoStates.waiting_discount_value)
-    hint = "процентов (1-100)" if dtype == "percent" else "рублей"
+    hint = "процентов (1–100)" if dtype == "percent" else "рублей"
     await call.message.edit_text(
-        f"💰 Введите размер скидки в {hint}:",
+        f"{COINS} Введите размер скидки в {hint}:",
         reply_markup=cancel_kb(),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
     await call.answer()
 
@@ -148,18 +147,17 @@ async def process_promo_value(message: Message, state: FSMContext):
         if val <= 0:
             raise ValueError()
     except (InvalidOperation, ValueError):
-        await message.answer(f"{FAIL} Введите число больше 0", reply_markup=cancel_kb())
+        await message.answer(f"{FAIL} Введите число больше 0", reply_markup=cancel_kb(), parse_mode="HTML")
         return
     await state.update_data(discount_value=str(val))
     await state.set_state(AdminPromoStates.waiting_max_uses)
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="♾ Безлимит", callback_data="apromo_unlimited"))
+    builder.row(InlineKeyboardButton(text=f"{plain(INFINITY)} Безлимит", callback_data="apromo_unlimited"))
     builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_cancel_state"))
     await message.answer(
-        "🔢 Максимум использований (введите число или нажмите «Безлимит»):",
-        reply_markup=builder.as_markup()
+        f"{ADD} Максимум использований (введите число или нажмите «Безлимит»):",
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML",
     )
 
 
@@ -181,9 +179,9 @@ async def process_promo_unlimited(call: CallbackQuery, session: AsyncSession, us
     await call.message.edit_text(
         f"{OK} <b>Промокод создан!</b>\n\n"
         f"{PROMO} Код: <code>{promo.code}</code>\n"
-        f"💰 Скидка: <b>{val}</b>\n"
-        f"🔢 Использований: безлимит",
-        parse_mode="HTML"
+        f"{COINS} Скидка: <b>{val}</b>\n"
+        f"{INFINITY} Использований: безлимит",
+        parse_mode="HTML",
     )
     await call.answer("Промокод создан!")
 
@@ -197,7 +195,7 @@ async def process_promo_max_uses(message: Message, session: AsyncSession, user: 
         if max_uses < 0:
             raise ValueError()
     except ValueError:
-        await message.answer(f"{FAIL} Введите целое число >= 0 или нажмите «Безлимит»", reply_markup=cancel_kb())
+        await message.answer(f"{FAIL} Введите целое число >= 0 или нажмите «Безлимит»", reply_markup=cancel_kb(), parse_mode="HTML")
         return
     data = await state.get_data()
     promo = await create_promo(
@@ -213,7 +211,7 @@ async def process_promo_max_uses(message: Message, session: AsyncSession, user: 
     await message.answer(
         f"{OK} <b>Промокод создан!</b>\n\n"
         f"{PROMO} Код: <code>{promo.code}</code>\n"
-        f"💰 Скидка: <b>{val}</b>\n"
-        f"🔢 Макс. использований: {promo.max_uses or 'безлимит'}",
-        parse_mode="HTML"
+        f"{COINS} Скидка: <b>{val}</b>\n"
+        f"{ADD} Макс. использований: {promo.max_uses or 'безлимит'}",
+        parse_mode="HTML",
     )
