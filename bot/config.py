@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     rollypay_terminal_id: str = ""
     rollypay_api_key: str = ""
     rollypay_signing_secret: str = ""
-    rollypay_api_url: str = "https://api.rollypay.io/v1"
+    rollypay_api_url: str = "https://rollypay.io/api/v1"
     admin_ids: str = ""
     webhook_host: str = ""
     webhook_path: str = "/webhook/bot"
