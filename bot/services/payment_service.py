@@ -359,24 +359,23 @@ async def check_rollypay_payment(payment_id: str, api_key: str) -> str:
         logger.error(f"RollyPay check: JSON parse error (HTTP {check_status}): {_pe}")
         return "error"
 
-    # SDK возвращает uppercase: "PAID", "CREATED", "FAILED", "EXPIRED", "CANCELED"
-    status = (data.get("status") or "").upper()
-    if status in ("PAID", "SUCCESS", "COMPLETED"):
+    status = (data.get("status") or "").lower()
+    if status in ("paid", "success", "completed"):
         return "paid"
-    if status in ("CREATED", "PENDING", "WAITING", "PROCESSING"):
+    if status in ("created", "pending", "waiting", "processing"):
         return "created"
-    if status in ("FAILED", "CANCELLED", "EXPIRED", "CANCELED"):
+    if status in ("failed", "cancelled", "expired", "canceled"):
         return "failed"
-    return status.lower() or "unknown"
+    return status or "unknown"
 
 
 async def process_rollypay_webhook(session: AsyncSession, data: dict) -> bool:
     """Обрабатывает вебхук от RollyPay."""
-    status = (data.get("status") or "").upper()
+    status = (data.get("status") or "").lower()
     payment_id = str(data.get("payment_id") or data.get("id") or "")
     order_id_str = str(data.get("order_id") or "")
 
-    if status not in ("PAID", "SUCCESS", "COMPLETED"):
+    if status not in ("paid", "success", "completed"):
         logger.info(f"RollyPay webhook: статус {status!r} — пропускаем")
         return False
 
