@@ -9,6 +9,7 @@ from sqlalchemy import select
 from ..models import User, Admin
 from ..services.settings_service import get_setting
 from ..keyboards.user import main_menu_kb, welcome_kb, captcha_kb, channel_only_kb
+from ..utils.emoji import BROADCAST, plain
 from ..utils.captcha import generate_captcha
 
 logger = logging.getLogger(__name__)
@@ -95,7 +96,7 @@ async def start_onboarding(
     # ── Шаг 3: повторная проверка канала (если бот в канале) ────────
     joined = await check_channel_member(bot, user.id)
     if not joined:
-        text = "📢 Для продолжения необходима подписка на канал:"
+        text = f"{BROADCAST} Для продолжения необходима подписка на канал:"
         try:
             if is_call:
                 await msg.edit_text(text, reply_markup=channel_only_kb(CHANNEL_INVITE))
