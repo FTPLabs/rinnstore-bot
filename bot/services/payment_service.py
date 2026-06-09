@@ -249,8 +249,8 @@ async def create_rollypay_invoice(
         return None
 
     payload: dict = {
-        "amount": float(order.total_amount),
-        "currency": "RUB",
+        "amount": str(order.total_amount),
+        "payment_currency": "RUB",
         "order_id": str(order.id),
         "payment_method": "sbp",
         "description": f"Заказ #{order.id} · RINN STORE",
@@ -359,23 +359,24 @@ async def check_rollypay_payment(payment_id: str, api_key: str) -> str:
         logger.error(f"RollyPay check: JSON parse error (HTTP {check_status}): {_pe}")
         return "error"
 
-    status = (data.get("status") or "").lower()
-    if status in ("paid", "success", "completed"):
+    # SDK возвращает uppercase: "PAID", "CREATED", "FAILED", "EXPIRED", "CANCELED"
+    status = (data.get("status") or "").upper()
+    if status in ("PAID", "SUCCESS", "COMPLETED"):
         return "paid"
-    if status in ("created", "pending", "waiting", "processing"):
+    if status in ("CREATED", "PENDING", "WAITING", "PROCESSING"):
         return "created"
-    if status in ("failed", "cancelled", "expired", "canceled"):
+    if status in ("FAILED", "CANCELLED", "EXPIRED", "CANCELED"):
         return "failed"
-    return status or "unknown"
+    return status.lower() or "unknown"
 
 
 async def process_rollypay_webhook(session: AsyncSession, data: dict) -> bool:
     """Обрабатывает вебхук от RollyPay."""
-    status = (data.get("status") or "").lower()
+    status = (data.get("status") or "").upper()
     payment_id = str(data.get("payment_id") or data.get("id") or "")
     order_id_str = str(data.get("order_id") or "")
 
-    if status not in ("paid", "success", "completed"):
+    if status not in ("PAID", "SUCCESS", "COMPLETED"):
         logger.info(f"RollyPay webhook: статус {status!r} — пропускаем")
         return False
 
