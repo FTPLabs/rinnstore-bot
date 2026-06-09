@@ -83,11 +83,12 @@ async def rollypay_webhook(request: web.Request) -> web.Response:
                 or request.headers.get("X-RollyPay-Signature")
                 or ""
             )
+            timestamp = request.headers.get("X-Timestamp", "")
             if not signature:
                 logger.warning("RollyPay webhook: нет заголовка подписи")
                 return web.Response(status=401, text="Missing signature")
-            if not verify_rollypay_signature(body, signing_secret, signature):
-                logger.warning("RollyPay webhook: неверная подпись")
+            if not verify_rollypay_signature(body, signing_secret, signature, timestamp):
+                logger.warning(f"RollyPay webhook: неверная подпись")
                 return web.Response(status=401, text="Invalid signature")
 
         data = json.loads(body)
@@ -119,7 +120,7 @@ async def rollypay_webhook(request: web.Request) -> web.Response:
 
 async def _notify_user_webhook(order_id: int, bot: Bot | None) -> None:
     """
-    ИСПРАВЛЕНИЕ #5: используем новую сессию (не переданную извне после commit).
+    ИСПРАВЛЕНИЕ #5: используем новуу сессию (не переданную извне после commit).
     Защита от двойной выдачи встроена в deliver_order (already_delivered_rows).
     """
     if not bot:
