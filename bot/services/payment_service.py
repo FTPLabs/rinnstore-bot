@@ -222,7 +222,7 @@ def verify_rollypay_signature(body: bytes, signing_secret: str, signature: str, 
     """Проверяет HMAC-SHA256 подпись вебхука RollyPay."""
     try:
         payload = (timestamp.encode("utf-8") + b"." + body) if timestamp else body
-        expected = hmac.new(
+        expected = hmac.HMAC(
             signing_secret.encode("utf-8"),
             payload,
             hashlib.sha256,
