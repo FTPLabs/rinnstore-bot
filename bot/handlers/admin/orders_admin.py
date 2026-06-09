@@ -13,7 +13,6 @@ from ...utils.emoji import (
 
 router = Router()
 
-
 PAGE_SIZE = 10
 STATUS_MAP = {
     "pending": f"{CLOCK} Ожидает",
@@ -57,7 +56,8 @@ async def cb_admin_orders_page(call: CallbackQuery, session: AsyncSession, user:
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("admin_order_"))
+# БАГ-ФИX: используем regexp вместо startswith — избегаем конфликта с admin_orders и admin_orders_page_
+@router.callback_query(F.data.regexp(r"^admin_order_\d+$"))
 async def cb_admin_order_detail(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
@@ -102,7 +102,7 @@ async def cb_admin_order_detail(call: CallbackQuery, session: AsyncSession, user
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("admin_deliver_"))
+@router.callback_query(F.data.regexp(r"^admin_deliver_\d+$"))
 async def cb_admin_deliver(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
@@ -116,7 +116,7 @@ async def cb_admin_deliver(call: CallbackQuery, session: AsyncSession, user: Use
     await cb_admin_order_detail(call, session, user)
 
 
-@router.callback_query(F.data.startswith("admin_cancel_order_"))
+@router.callback_query(F.data.regexp(r"^admin_cancel_order_\d+$"))
 async def cb_admin_cancel_order(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)

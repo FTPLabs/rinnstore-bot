@@ -8,11 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ...models import User, Product, Category, ProductItem
 from ...keyboards.admin import (
+    admin_product_keys_kb, admin_key_detail_kb, admin_confirm_key_del_kb,
     admin_products_kb, admin_product_detail_kb, cancel_kb,
     admin_categories_kb, admin_category_detail_kb, admin_confirm_kb,
     admin_select_category_kb, admin_subcategories_kb, admin_subcategory_detail_kb
 )
 from ...services.admin_service import (
+    get_product_keys, count_product_keys, delete_product_key, update_product_key,
     is_admin, get_all_products, get_root_categories,
     get_subcategories_admin, get_all_categories,
     create_category, create_product, toggle_product,
@@ -39,6 +41,7 @@ class ProductStates(StatesGroup):
     waiting_new_price = State()
     waiting_discount_percent = State()
     waiting_discount_days = State()
+    waiting_key_edit_data = State()
 
 
 # ─── PRODUCTS LIST ───────────────────────────────────────────────────
@@ -705,3 +708,213 @@ async def cb_delete_cat_do(call: CallbackQuery, session: AsyncSession, user: Use
     await log_action(session, user.id, "delete_category", "category", cat_id)
     await call.answer("✅ Категория удалена", show_alert=True)
     await call.message.edit_text("✅ Категория удалена.")
+
+
+# ─── KEY MANAGEMENT ──────────────────────────────────────────────────
+
+KEYS_PAGE_SIZE = 10
+
+
+@router.callback_query(F.data.regexp(r"^admin_keys_\d+$"))
+async def cb_admin_keys(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    """Список ключей товара (первая страница)."""
+    if not await is_admin(session, user.id):
+        return await call.answer("🚫 Нет доступа", show_alert=True)
+    await state.clear()
+    product_id = parse_callback_int(call.data, 2)
+    if product_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
+
+    result = await session.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        return await call.answer("Товар не найден", show_alert=True)
+
+    total = await count_product_keys(session, product_id)
+    keys = await get_product_keys(session, product_id, offset=0, limit=KEYS_PAGE_SIZE)
+    kind = "♾ Безлимит" if product.is_unlimited else "📦 Обычный"
+    text = (
+        f"{KEY} <b>Ключи: {product.name}</b>\n"
+        f"{'━' * 16}\n\n"
+        f"Тип: {kind}\n"
+        f"Всего ключей: <b>{total}</b>\n\n"
+        f"{plain(OK)} — доступен  {plain(FAIL)} — продан"
+    )
+    await call.message.edit_text(
+        text,
+        reply_markup=admin_product_keys_kb(keys, product_id, 0, total),
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.regexp(r"^admin_keys_\d+_pg_\d+$"))
+async def cb_admin_keys_page(call: CallbackQuery, session: AsyncSession, user: User):
+    """Пагинация списка ключей."""
+    if not await is_admin(session, user.id):
+        return await call.answer("🚫 Нет доступа", show_alert=True)
+    parts = call.data.split("_")
+    # admin_keys_{product_id}_pg_{page}  →  [admin, keys, product_id, pg, page]
+    try:
+        product_id = int(parts[2])
+        page = int(parts[4])
+    except (IndexError, ValueError):
+        return await call.answer("Ошибка данных", show_alert=True)
+
+    total = await count_product_keys(session, product_id)
+    keys = await get_product_keys(session, product_id, offset=page * KEYS_PAGE_SIZE, limit=KEYS_PAGE_SIZE)
+    result = await session.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    name = product.name if product else f"#{product_id}"
+
+    text = (
+        f"{KEY} <b>Ключи: {name}</b>\n"
+        f"{'━' * 16}\n\n"
+        f"Всего: <b>{total}</b>  •  стр. <b>{page+1}</b>\n\n"
+        f"{plain(OK)} — доступен  {plain(FAIL)} — продан"
+    )
+    await call.message.edit_text(
+        text,
+        reply_markup=admin_product_keys_kb(keys, product_id, page, total),
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.regexp(r"^admin_key_\d+$"))
+async def cb_admin_key_detail(call: CallbackQuery, session: AsyncSession, user: User):
+    """Детали одного ключа."""
+    if not await is_admin(session, user.id):
+        return await call.answer("🚫 Нет доступа", show_alert=True)
+    key_id = parse_callback_int(call.data, 2)
+    if key_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
+
+    result = await session.execute(select(ProductItem).where(ProductItem.id == key_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        return await call.answer("Ключ не найден", show_alert=True)
+
+    status = f"{FAIL} Продан" if item.is_sold else f"{OK} Доступен"
+    reserved = f"\n{EDIT} Зарезервирован до: {item.reserved_until.strftime('%d.%m %H:%M')}" if item.is_reserved and item.reserved_until else ""
+    sold_at = f"\n📅 Продан: {item.sold_at.strftime('%d.%m.%Y %H:%M')}" if item.sold_at else ""
+    text = (
+        f"{KEY} <b>Ключ #{item.id}</b>\n"
+        f"{'━' * 16}\n\n"
+        f"Статус: {status}{reserved}{sold_at}\n"
+        f"Товар ID: {item.product_id}\n"
+        f"{'━' * 16}\n"
+        f"Данные:\n<code>{item.data}</code>"
+    )
+    await call.message.edit_text(
+        text,
+        reply_markup=admin_key_detail_kb(key_id, item.product_id, item.is_sold),
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.regexp(r"^admin_key_edit_\d+$"))
+async def cb_admin_key_edit(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    """Начало редактирования ключа."""
+    if not await is_admin(session, user.id):
+        return await call.answer("🚫 Нет доступа", show_alert=True)
+    key_id = parse_callback_int(call.data, 3)
+    if key_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
+
+    result = await session.execute(select(ProductItem).where(ProductItem.id == key_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        return await call.answer("Ключ не найден", show_alert=True)
+
+    await state.set_state(ProductStates.waiting_key_edit_data)
+    await state.update_data(edit_key_id=key_id, edit_key_product_id=item.product_id)
+    await call.message.edit_text(
+        f"{EDIT} <b>Редактирование ключа #{key_id}</b>\n\n"
+        f"Текущие данные:\n<code>{item.data}</code>\n\n"
+        f"Отправьте новые данные ключа:",
+        reply_markup=cancel_kb(),
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@router.message(ProductStates.waiting_key_edit_data)
+async def process_key_edit_data(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    """Сохранение новых данных ключа."""
+    if not await is_admin(session, user.id):
+        return
+    new_data = message.text.strip() if message.text else ""
+    if not new_data:
+        await message.answer(f"{FAIL} Данные не могут быть пустыми.", reply_markup=cancel_kb())
+        return
+
+    data = await state.get_data()
+    key_id = data.get("edit_key_id")
+    product_id = data.get("edit_key_product_id")
+
+    ok, reason = await update_product_key(session, key_id, new_data)
+    await state.clear()
+    if ok:
+        await log_action(session, user.id, "edit_key", "product_item", key_id)
+        await message.answer(
+            f"{plain(OK)} Ключ #{key_id} обновлён.\n\n"
+            f"Новые данные:\n<code>{new_data}</code>",
+            parse_mode="HTML"
+        )
+    else:
+        await message.answer(f"{FAIL} Не удалось обновить: {reason}")
+
+
+@router.callback_query(F.data.regexp(r"^admin_key_del_\d+$"))
+async def cb_admin_key_del_confirm(call: CallbackQuery, session: AsyncSession, user: User):
+    """Подтверждение удаления ключа."""
+    if not await is_admin(session, user.id):
+        return await call.answer("🚫 Нет доступа", show_alert=True)
+    key_id = parse_callback_int(call.data, 3)
+    if key_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
+
+    result = await session.execute(select(ProductItem).where(ProductItem.id == key_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        return await call.answer("Ключ не найден", show_alert=True)
+    if item.is_sold:
+        return await call.answer("Нельзя удалить проданный ключ", show_alert=True)
+
+    preview = item.data[:50] + "…" if len(item.data) > 52 else item.data
+    await call.message.edit_text(
+        f"⚠️ <b>Удалить ключ #{key_id}?</b>\n\n"
+        f"<code>{preview}</code>\n\n"
+        f"Это действие необратимо.",
+        reply_markup=admin_confirm_key_del_kb(key_id, item.product_id),
+        parse_mode="HTML"
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.regexp(r"^confirm_key_del_\d+$"))
+async def cb_admin_key_del_do(call: CallbackQuery, session: AsyncSession, user: User):
+    """Выполнение удаления ключа."""
+    if not await is_admin(session, user.id):
+        return await call.answer("🚫 Нет доступа", show_alert=True)
+    key_id = parse_callback_int(call.data, 3)
+    if key_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
+
+    result = await session.execute(select(ProductItem).where(ProductItem.id == key_id))
+    item = result.scalar_one_or_none()
+    product_id = item.product_id if item else None
+
+    ok, reason = await delete_product_key(session, key_id)
+    if ok:
+        await log_action(session, user.id, "delete_key", "product_item", key_id)
+        await call.answer(f"✅ Ключ #{key_id} удалён", show_alert=True)
+        if product_id:
+            call.data = f"admin_keys_{product_id}"
+            await cb_admin_keys(call, session, user, None)
+        else:
+            await call.message.edit_text(f"{plain(OK)} Ключ удалён.", parse_mode="HTML")
+    else:
+        await call.answer(f"❌ {reason}", show_alert=True)

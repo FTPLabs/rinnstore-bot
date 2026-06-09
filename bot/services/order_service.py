@@ -105,6 +105,15 @@ async def cancel_order(session: AsyncSession, order_id: int) -> None:
     order = result.scalar_one_or_none()
     if not order:
         return
+
+    # БАГ-ФИX: откатываем total_spent если заказ уже был доставлен
+    if order.status in ("delivered", "partial"):
+        await session.execute(
+            update(User)
+            .where(User.id == order.user_id)
+            .values(total_spent=func.greatest(User.total_spent - order.total_amount, Decimal("0")))
+        )
+
     if order.promo_code_id:
         await session.execute(
             update(PromoCode)
@@ -126,6 +135,7 @@ async def cancel_order(session: AsyncSession, order_id: int) -> None:
 
 
 async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
+    # Блокируем заказ первым — защита от race condition при двойной выдаче
     result = await session.execute(
         select(Order).where(Order.id == order_id).with_for_update()
     )
@@ -133,8 +143,9 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
     if not order:
         return []
 
+    # Проверяем, не выдан ли уже — атомарно в рамках той же блокировки
     already_result = await session.execute(
-        select(DeliveredItem).where(DeliveredItem.order_id == order_id).with_for_update()
+        select(DeliveredItem).where(DeliveredItem.order_id == order_id)
     )
     already_delivered_rows = already_result.scalars().all()
     if already_delivered_rows:
@@ -163,8 +174,6 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
         product = prod_result.scalar_one_or_none()
 
         for _ in range(order_item.quantity):
-            # Логика одинакова для unlimited и обычных товаров:
-            # берём любой доступный item (не продан, не зарезервирован)
             pi_result = await session.execute(
                 select(ProductItem).where(
                     ProductItem.product_id == order_item.product_id,
@@ -173,11 +182,42 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
                 ).limit(1).with_for_update(skip_locked=True)
             )
             pi = pi_result.scalar_one_or_none()
-            if pi:
+
+            # БАГ-ФИX: для безлимитных товаров клонируем данные из шаблона
+            if pi is None and product and product.is_unlimited:
+                template_result = await session.execute(
+                    select(ProductItem)
+                    .where(ProductItem.product_id == order_item.product_id)
+                    .order_by(ProductItem.id.asc())
+                    .limit(1)
+                )
+                template = template_result.scalar_one_or_none()
+                if template:
+                    pi = ProductItem(
+                        product_id=order_item.product_id,
+                        data=template.data,
+                        is_sold=True,
+                        is_reserved=False,
+                        sold_at=datetime.now(timezone.utc),
+                        order_id=order_id,
+                    )
+                    session.add(pi)
+                    await session.flush()
+
+            if pi and not pi.is_sold:
                 pi.is_sold = True
                 pi.is_reserved = False
                 pi.sold_at = datetime.now(timezone.utc)
                 pi.order_id = order_id
+                delivered = DeliveredItem(
+                    order_id=order_id,
+                    order_item_id=order_item.id,
+                    product_item_id=pi.id,
+                )
+                session.add(delivered)
+                delivered_list.append({"data": pi.data, "product_item_id": pi.id})
+            elif pi and pi.is_sold:
+                # Уже продан (безлимитный, только что создан)
                 delivered = DeliveredItem(
                     order_id=order_id,
                     order_item_id=order_item.id,

@@ -321,3 +321,64 @@ async def log_action(
     )
     session.add(log)
     await session.commit()
+
+
+# ─── УПРАВЛЕНИЕ КЛЮЧАМИ ТОВАРОВ ────────────────────────────────────────────────
+
+async def get_product_keys(
+    session: AsyncSession,
+    product_id: int,
+    offset: int = 0,
+    limit: int = 15,
+) -> list[ProductItem]:
+    """Возвращает ключи (ProductItem) для товара с пагинацией."""
+    result = await session.execute(
+        select(ProductItem)
+        .where(ProductItem.product_id == product_id)
+        .order_by(ProductItem.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+async def count_product_keys(session: AsyncSession, product_id: int) -> int:
+    """Считает общее количество ключей для товара."""
+    result = await session.execute(
+        select(func.count(ProductItem.id)).where(ProductItem.product_id == product_id)
+    )
+    return result.scalar() or 0
+
+
+async def delete_product_key(session: AsyncSession, key_id: int) -> tuple[bool, str]:
+    """
+    Удаляет ключ (ProductItem).
+    Возвращает (True, "") при успехе или (False, причина) если нельзя.
+    """
+    result = await session.execute(
+        select(ProductItem).where(ProductItem.id == key_id).with_for_update()
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        return False, "Ключ не найден"
+    if item.is_sold:
+        return False, "Нельзя удалить проданный ключ"
+    await session.execute(delete(ProductItem).where(ProductItem.id == key_id))
+    await session.commit()
+    return True, ""
+
+
+async def update_product_key(session: AsyncSession, key_id: int, new_data: str) -> tuple[bool, str]:
+    """
+    Редактирует данные ключа.
+    Возвращает (True, "") при успехе или (False, причина).
+    """
+    result = await session.execute(
+        select(ProductItem).where(ProductItem.id == key_id).with_for_update()
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        return False, "Ключ не найден"
+    item.data = new_data.strip()
+    await session.commit()
+    return True, ""

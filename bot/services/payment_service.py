@@ -1,4 +1,5 @@
 import aiohttp
+import json
 import asyncio
 import hmac
 import hashlib
@@ -287,8 +288,7 @@ async def create_rollypay_invoice(
         logger.error(f"RollyPay: HTTP {http_status} — пустой ответ. Проверьте API URL и API Key.")
         return None
     try:
-        import json as _json
-        resp_data = _json.loads(raw_body)
+        resp_data = json.loads(raw_body)
     except Exception as _pe:
         logger.error(f"RollyPay: JSON parse error (HTTP {http_status}): {_pe}. Body: {raw_body[:300]!r}")
         return None
@@ -354,8 +354,7 @@ async def check_rollypay_payment(payment_id: str, api_key: str) -> str:
         logger.error(f"RollyPay check: HTTP {check_status} — пустой ответ (id={payment_id})")
         return "error"
     try:
-        import json as _json
-        data = _json.loads(check_raw)
+        data = json.loads(check_raw)
     except Exception as _pe:
         logger.error(f"RollyPay check: JSON parse error (HTTP {check_status}): {_pe}")
         return "error"

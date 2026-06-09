@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,7 @@ from ...services.admin_service import (
 from ...services.order_service import get_user_orders
 from ...utils.helpers import parse_callback_int
 from ...utils.emoji import (
-    USERS, SHIELD, BANNED, OK, FAIL, BACK, STATS, ORDERS, PROFILE, plain
+    USERS, SHIELD, BANNED, OK, FAIL, BACK, STATS, ORDERS, PROFILE, KEY, plain
 )
 
 router = Router()
@@ -29,24 +30,12 @@ async def cb_admin_users(call: CallbackQuery, session: AsyncSession, user: User)
     if not await is_admin(session, user.id):
         return await call.answer("🚫 Нет доступа", show_alert=True)
     users = await get_users_paginated(session, 0, 15)
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
-    builder = InlineKeyboardBuilder()
-    for u in users:
-        ban_icon = plain(BANNED) if u.is_banned else plain(SHIELD)
-        name = u.first_name or f"id{u.id}"
-        builder.row(InlineKeyboardButton(
-            text=f"{ban_icon} {name} · {u.id}",
-            callback_data=f"admin_user_{u.id}"
-        ))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_main"))
-
     text = (
         f"{USERS} <b>Пользователи</b>\n"
         f"{'━' * 16}\n\n"
         f"Последние {len(users)} зарегистрированных:"
     )
-    await call.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    await call.message.edit_text(text, reply_markup=admin_users_kb(users), parse_mode="HTML")
     await call.answer()
 
 
@@ -71,6 +60,7 @@ async def cb_admin_user_detail(call: CallbackQuery, session: AsyncSession, user:
         f"📌 Статус: {ban_status}\n"
         f"{'━' * 16}\n"
         f"{STATS} Потрачено: <b>{target.total_spent} руб.</b>\n"
+        f"💰 Баланс: <b>{target.balance or 0:.2f} руб.</b>\n"
         f"📅 Регистрация: {target.created_at.strftime('%d.%m.%Y')}"
     )
     await call.message.edit_text(
@@ -142,7 +132,7 @@ async def process_balance_amount(message: Message, session: AsyncSession, user: 
     await log_action(session, user.id, "add_balance", "user", target_id, {
         "amount": str(amount),
         "old": str(old_balance),
-        "new": str(target.balance)
+        "new": str(target.balance),
     })
     await state.clear()
     sign = "+" if amount >= 0 else ""
@@ -164,18 +154,24 @@ async def cb_admin_user_orders(call: CallbackQuery, session: AsyncSession, user:
         return await call.answer("Ошибка данных", show_alert=True)
     orders = await get_user_orders(session, target_id, limit=20)
 
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
     for order in orders:
         status_e = {
-            "pending": "⏳", "paid": plain(OK), "delivered": plain(KEY), "cancelled": plain(FAIL)
+            "pending": "⏳",
+            "paid": plain(OK),
+            "delivered": plain(KEY),
+            "cancelled": plain(FAIL),
+            "partial": "⚠️",
         }.get(order.status, "❓")
         builder.row(InlineKeyboardButton(
             text=f"{status_e} #{order.id} — {order.total_amount}₽",
             callback_data=f"admin_order_{order.id}"
         ))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data=f"admin_user_{target_id}"))
+    builder.row(InlineKeyboardButton(
+        text=f"{plain(BACK)} Назад",
+        callback_data=f"admin_user_{target_id}",
+    ))
+    builder.row(InlineKeyboardButton(text="🏠 Меню", callback_data="main_menu"))
 
     text = (
         f"{ORDERS} <b>Заказы пользователя {target_id}</b>\n"
