@@ -10,6 +10,9 @@ from ..keyboards.user import main_menu_kb, back_to_menu_kb, profile_kb
 from ..services.settings_service import get_setting
 from ..services.user_service import get_referral_count, get_or_create_user
 from ..handlers.onboarding import start_onboarding
+from ..utils.emoji import (
+    PROFILE, USER, ATTACH, COINS, BAG, GIFT, LINK, SUPPORT, SETTINGS, plain,
+)
 
 router = Router()
 
@@ -75,25 +78,25 @@ async def cb_profile(call: CallbackQuery, user: User, session: AsyncSession, bot
     referral_bonus_str = f"{user.referral_bonus:.2f}" if user.referral_bonus else "0.00"
 
     text = (
-        f"<b>👤 Профиль</b>\n"
+        f"<b>{PROFILE} Профиль</b>\n"
         f"{'━' * 20}\n\n"
         f"🆔 ID: <code>{user.id}</code>\n"
-        f"👤 Имя: {user.first_name or '—'}\n"
-        f"📎 Username: {username_str}\n"
+        f"{USER} Имя: {user.first_name or '—'}\n"
+        f"{ATTACH} Username: {username_str}\n"
         f"🏅 Уровень: {level}\n"
         f"📅 Регистрация: {reg_date}\n\n"
         f"{'━' * 20}\n"
-        f"💰 Баланс: <b>{user.balance:.2f} ₽</b>\n"
-        f"🛍 Потрачено: <b>{user.total_spent:.2f} ₽</b>\n"
-        f"🎁 Реф. бонус: <b>{referral_bonus_str} ₽</b>\n\n"
+        f"{COINS} Баланс: <b>{user.balance:.2f} ₽</b>\n"
+        f"{BAG} Потрачено: <b>{user.total_spent:.2f} ₽</b>\n"
+        f"{GIFT} Реф. бонус: <b>{referral_bonus_str} ₽</b>\n\n"
         f"{'━' * 20}\n"
-        f"🔗 Реф. программа\n"
+        f"{LINK} Реф. программа\n"
         f"Приглашено друзей: <b>{ref_count}</b>\n"
         f"Ваш код: <code>{ref}</code>\n"
         f"Ссылка: <code>{ref_link}</code>"
     )
     if is_admin:
-        text += f"\n\n{'━' * 20}\n⚙️ Роль: <b>Администратор</b>"
+        text += f"\n\n{'━' * 20}\n{SETTINGS} Роль: <b>Администратор</b>"
 
     await call.message.edit_text(text, reply_markup=profile_kb(ref, bot_username), parse_mode="HTML")
     await call.answer()
@@ -102,6 +105,6 @@ async def cb_profile(call: CallbackQuery, user: User, session: AsyncSession, bot
 @router.callback_query(F.data == "support")
 async def cb_support(call: CallbackQuery, session: AsyncSession):
     username = await get_setting(session, "support_username")
-    text = f"<b>💬 Поддержка</b>\n\nПишите нам: @{username}"
-    await call.message.edit_text(text, reply_markup=back_to_menu_kb())
+    text = f"<b>{SUPPORT} Поддержка</b>\n\nПишите нам: @{username}"
+    await call.message.edit_text(text, reply_markup=back_to_menu_kb(), parse_mode="HTML")
     await call.answer()
