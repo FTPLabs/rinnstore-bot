@@ -22,10 +22,10 @@ async def get_stats(session: AsyncSession) -> dict:
     total_users = (await session.execute(select(func.count(User.id)))).scalar()
     total_orders = (await session.execute(select(func.count(Order.id)))).scalar()
     paid_orders = (await session.execute(
-        select(func.count(Order.id)).where(Order.status.in_(["paid", "delivered"]))
+        select(func.count(Order.id)).where(Order.status.in_(["paid", "delivered", "partial"]))
     )).scalar()
     total_revenue = (await session.execute(
-        select(func.sum(Order.total_amount)).where(Order.status.in_(["paid", "delivered"]))
+        select(func.sum(Order.total_amount)).where(Order.status.in_(["paid", "delivered", "partial"]))
     )).scalar() or Decimal("0")
     total_products = (await session.execute(select(func.count(Product.id)))).scalar()
     total_items = (await session.execute(
@@ -155,33 +155,28 @@ async def delete_product(session: AsyncSession, product_id: int) -> bool:
     return True
 
 
+async def _delete_category_recursive(session: AsyncSession, category_id: int) -> None:
+    """Рекурсивно удаляет категорию со всеми вложенными подкатегориями и товарами."""
+    subcats_res = await session.execute(
+        select(Category).where(Category.parent_id == category_id)
+    )
+    for sub in subcats_res.scalars().all():
+        await _delete_category_recursive(session, sub.id)
+
+    prod_res = await session.execute(select(Product).where(Product.category_id == category_id))
+    for product in prod_res.scalars().all():
+        await _hard_delete_product(session, product.id)
+
+    await session.execute(delete(Category).where(Category.id == category_id))
+
+
 async def delete_category(session: AsyncSession, category_id: int) -> bool:
     result = await session.execute(select(Category).where(Category.id == category_id))
     cat = result.scalar_one_or_none()
     if not cat:
         return False
 
-    # Получаем ВСЕ подкатегории (включая скрытые), чтобы зачистить до конца
-    all_subcats_res = await session.execute(
-        select(Category).where(Category.parent_id == category_id)
-    )
-    subcats = all_subcats_res.scalars().all()
-
-    for sub in subcats:
-        # Удаляем все товары подкатегории
-        prod_res = await session.execute(select(Product).where(Product.category_id == sub.id))
-        for product in prod_res.scalars().all():
-            await _hard_delete_product(session, product.id)
-        # Удаляем саму подкатегорию
-        await session.execute(delete(Category).where(Category.id == sub.id))
-
-    # Удаляем товары основной категории
-    prod_res = await session.execute(select(Product).where(Product.category_id == category_id))
-    for product in prod_res.scalars().all():
-        await _hard_delete_product(session, product.id)
-
-    # Удаляем саму категорию (если нет товаров с заказами — FK на Category нет)
-    await session.execute(delete(Category).where(Category.id == category_id))
+    await _delete_category_recursive(session, category_id)
     await session.commit()
     return True
 
