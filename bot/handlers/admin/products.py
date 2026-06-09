@@ -23,7 +23,8 @@ from ...services.admin_service import (
 )
 from ...utils.helpers import parse_callback_int
 from ...utils.emoji import (
-    BAG, KEY, OK, FAIL, ADD, EDIT, STATS, BACK, CATALOG, TAG, plain
+    BAG, KEY, OK, FAIL, ADD, EDIT, STATS, BACK, CATALOG, TAG,
+    COINS, OPEN_FOLDER, PIN, INFINITY, TIMER, WARN, BANNED, plain
 )
 
 router = Router()
@@ -49,7 +50,7 @@ class ProductStates(StatesGroup):
 @router.callback_query(F.data == "admin_products")
 async def cb_admin_products(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     await state.clear()
     products = await get_all_products(session)
     text = (
@@ -66,7 +67,7 @@ async def cb_admin_products(call: CallbackQuery, session: AsyncSession, user: Us
 @router.callback_query(F.data.regexp(r"^admin_product_\d+$"))
 async def cb_admin_product_detail(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     product_id = parse_callback_int(call.data, 2)
     if product_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -77,7 +78,7 @@ async def cb_admin_product_detail(call: CallbackQuery, session: AsyncSession, us
         return await call.answer("Товар не найден", show_alert=True)
 
     stock = await get_stock_for_product(session, product_id)
-    kind = "♾ Безлимитный" if product.is_unlimited else "📦 Обычный"
+    kind = f"{INFINITY} Безлимитный" if product.is_unlimited else f"{BAG} Обычный"
     status = f"{plain(OK)} Активен" if product.is_active else f"{plain(FAIL)} Скрыт"
 
     disc_text = ""
@@ -85,14 +86,14 @@ async def cb_admin_product_detail(call: CallbackQuery, session: AsyncSession, us
         exp = ""
         if product.discount_expires_at:
             exp = f" до {product.discount_expires_at.strftime('%d.%m.%Y %H:%M')}"
-        disc_text = f"\n🏷 Скидка: <b>{product.discount_percent}%</b>{exp}"
+        disc_text = f"\n{TAG} Скидка: <b>{product.discount_percent}%</b>{exp}"
 
     text = (
         f"{BAG} <b>{product.name}</b>\n"
         f"{'━' * 16}\n\n"
-        f"📌 Статус: {status}\n"
-        f"📂 Тип: {kind}\n"
-        f"💰 Цена: <b>{product.price} ₽</b>{disc_text}\n"
+        f"{PIN} Статус: {status}\n"
+        f"{OPEN_FOLDER} Тип: {kind}\n"
+        f"{COINS} Цена: <b>{product.price} ₽</b>{disc_text}\n"
         f"{'━' * 16}\n"
         f"{STATS} Всего: {stock['total']} | Доступно: {stock['available']} | Продано: {stock['sold']}"
     )
@@ -109,7 +110,7 @@ async def cb_admin_product_detail(call: CallbackQuery, session: AsyncSession, us
 @router.callback_query(F.data.startswith("admin_toggle_product_"))
 async def cb_toggle_product(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     product_id = parse_callback_int(call.data, 3)
     if product_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -126,7 +127,7 @@ async def cb_toggle_product(call: CallbackQuery, session: AsyncSession, user: Us
 @router.callback_query(F.data.startswith("admin_delete_product_"))
 async def cb_delete_product_confirm(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     product_id = parse_callback_int(call.data, 3)
     if product_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -137,7 +138,7 @@ async def cb_delete_product_confirm(call: CallbackQuery, session: AsyncSession, 
         return await call.answer("Товар не найден", show_alert=True)
 
     await call.message.edit_text(
-        f"⚠️ Удалить товар <b>{product.name}</b>?\n\nТовар и все ключи будут удалены безвозвратно.",
+        f"{WARN} Удалить товар <b>{product.name}</b>?\n\nТовар и все ключи будут удалены безвозвратно.",
         reply_markup=admin_confirm_kb("del_product", product_id),
         parse_mode="HTML"
     )
@@ -147,14 +148,14 @@ async def cb_delete_product_confirm(call: CallbackQuery, session: AsyncSession, 
 @router.callback_query(F.data.startswith("confirm_del_product_"))
 async def cb_delete_product_do(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     product_id = parse_callback_int(call.data, 3)
     if product_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
     await delete_product(session, product_id)
     await log_action(session, user.id, "delete_product", "product", product_id)
-    await call.answer("✅ Товар удалён", show_alert=True)
-    await call.message.edit_text("✅ Товар удалён.")
+    await call.answer(f"{plain(OK)} Товар удалён", show_alert=True)
+    await call.message.edit_text(f"{plain(OK)} Товар удалён.")
 
 
 # ─── CHANGE PRICE ────────────────────────────────────────────────────
@@ -162,7 +163,7 @@ async def cb_delete_product_do(call: CallbackQuery, session: AsyncSession, user:
 @router.callback_query(F.data.startswith("admin_change_price_"))
 async def cb_change_price_start(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     product_id = parse_callback_int(call.data, 3)
     if product_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -175,7 +176,7 @@ async def cb_change_price_start(call: CallbackQuery, session: AsyncSession, user
     await state.update_data(price_product_id=product_id)
     await state.set_state(ProductStates.waiting_new_price)
     await call.message.edit_text(
-        f"💰 <b>{product.name}</b>\n\nТекущая цена: <b>{product.price} ₽</b>\n\nВведите новую цену:",
+        f"{COINS} <b>{product.name}</b>\n\nТекущая цена: <b>{product.price} ₽</b>\n\nВведите новую цену:",
         reply_markup=cancel_kb(),
         parse_mode="HTML"
     )
@@ -207,7 +208,7 @@ async def process_new_price(message: Message, session: AsyncSession, user: User,
 @router.callback_query(F.data.startswith("admin_set_discount_"))
 async def cb_set_discount_start(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     product_id = parse_callback_int(call.data, 3)
     if product_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -220,7 +221,7 @@ async def cb_set_discount_start(call: CallbackQuery, session: AsyncSession, user
     await state.update_data(discount_product_id=product_id)
     await state.set_state(ProductStates.waiting_discount_percent)
     await call.message.edit_text(
-        f"🏷 <b>Скидка на {product.name}</b>\n\nВведите процент (1-99) или 0 для отмены скидки:",
+        f"{TAG} <b>Скидка на {product.name}</b>\n\nВведите процент (1-99) или 0 для отмены скидки:",
         reply_markup=cancel_kb(),
         parse_mode="HTML"
     )
@@ -251,7 +252,7 @@ async def process_discount_percent(message: Message, session: AsyncSession, user
 
     await state.update_data(discount_percent=str(pct))
     await state.set_state(ProductStates.waiting_discount_days)
-    await message.answer("⏱ Введите длительность скидки в часах (0 = бессрочно):", reply_markup=cancel_kb())
+    await message.answer(f"{TIMER} Введите длительность скидки в часах (0 = бессрочно):", reply_markup=cancel_kb())
 
 
 @router.message(ProductStates.waiting_discount_days)
@@ -283,7 +284,7 @@ async def process_discount_days(message: Message, session: AsyncSession, user: U
 @router.callback_query(F.data.startswith("admin_stock_"))
 async def cb_admin_stock(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     product_id = parse_callback_int(call.data, 2)
     if product_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -297,14 +298,14 @@ async def cb_admin_stock(call: CallbackQuery, session: AsyncSession, user: User)
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=f"◀️ Назад к товару", callback_data=f"admin_product_{product_id}"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад к товару", callback_data=f"admin_product_{product_id}"))
 
     text = (
         f"{STATS} <b>Остатки: {product.name}</b>\n"
         f"{'━' * 16}\n\n"
-        f"📦 Всего ключей: <b>{stock['total']}</b>\n"
-        f"✅ Доступно: <b>{stock['available']}</b>\n"
-        f"🔑 Продано: <b>{stock['sold']}</b>"
+        f"{BAG} Всего ключей: <b>{stock['total']}</b>\n"
+        f"{OK} Доступно: <b>{stock['available']}</b>\n"
+        f"{KEY} Продано: <b>{stock['sold']}</b>"
     )
     await call.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     await call.answer()
@@ -315,7 +316,7 @@ async def cb_admin_stock(call: CallbackQuery, session: AsyncSession, user: User)
 @router.callback_query(F.data.startswith("admin_add_keys_"))
 async def cb_add_keys_start(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     product_id = parse_callback_int(call.data, 3)
     if product_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -357,7 +358,7 @@ async def process_keys(message: Message, session: AsyncSession, user: User, stat
 @router.callback_query(F.data == "admin_add_product")
 async def cb_add_product_start(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     # Показываем все категории (корневые + подкатегории) для выбора
     all_cats = await get_all_categories(session)
     active_cats = [c for c in all_cats if c.is_active]
@@ -377,7 +378,7 @@ async def cb_add_product_start(call: CallbackQuery, session: AsyncSession, user:
 @router.callback_query(F.data.startswith("admin_product_category_"))
 async def cb_product_category_chosen(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     cat_id = parse_callback_int(call.data, 3)
     if cat_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -446,7 +447,7 @@ async def process_product_price(message: Message, session: AsyncSession, user: U
 @router.callback_query(F.data.in_({"product_unlimited_yes", "product_unlimited_no"}))
 async def process_product_unlimited(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     is_unlimited = call.data == "product_unlimited_yes"
     data = await state.get_data()
     product = await create_product(
@@ -476,7 +477,7 @@ async def process_product_unlimited(call: CallbackQuery, session: AsyncSession, 
 @router.callback_query(F.data == "admin_categories")
 async def cb_admin_categories(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     await state.clear()
     cats = await get_root_categories(session)
     text = f"{CATALOG} <b>Категории</b>\n{'━' * 16}\n\nГлавных категорий: <b>{len(cats)}</b>"
@@ -487,7 +488,7 @@ async def cb_admin_categories(call: CallbackQuery, session: AsyncSession, user: 
 @router.callback_query(F.data.regexp(r"^admin_cat_\d+$"))
 async def cb_admin_cat_detail(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     cat_id = parse_callback_int(call.data, 2)
     if cat_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -517,7 +518,7 @@ async def cb_admin_cat_detail(call: CallbackQuery, session: AsyncSession, user: 
 @router.callback_query(F.data.startswith("admin_subcats_"))
 async def cb_admin_subcats(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     parent_id = parse_callback_int(call.data, 2)
     if parent_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -540,7 +541,7 @@ async def cb_admin_subcats(call: CallbackQuery, session: AsyncSession, user: Use
 @router.callback_query(F.data.startswith("admin_subcat_detail_"))
 async def cb_admin_subcat_detail(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     cat_id = parse_callback_int(call.data, 3)
     if cat_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -570,7 +571,7 @@ async def cb_admin_subcat_detail(call: CallbackQuery, session: AsyncSession, use
 @router.callback_query(F.data == "admin_add_category")
 async def cb_add_category_start(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     await state.update_data(category_parent_id=None)
     await state.set_state(ProductStates.waiting_category_name)
     await call.message.edit_text(
@@ -586,7 +587,7 @@ async def cb_add_category_start(call: CallbackQuery, session: AsyncSession, user
 @router.callback_query(F.data.startswith("admin_add_subcat_"))
 async def cb_add_subcat_start(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     parent_id = parse_callback_int(call.data, 3)
     if parent_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -655,7 +656,7 @@ async def process_category_name(message: Message, session: AsyncSession, user: U
 @router.callback_query(F.data.startswith("admin_toggle_cat_"))
 async def cb_toggle_cat(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     cat_id = parse_callback_int(call.data, 3)
     if cat_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -679,7 +680,7 @@ async def cb_toggle_cat(call: CallbackQuery, session: AsyncSession, user: User):
 @router.callback_query(F.data.startswith("admin_delete_cat_"))
 async def cb_delete_cat(call: CallbackQuery, session: AsyncSession, user: User):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     cat_id = parse_callback_int(call.data, 3)
     if cat_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -700,7 +701,7 @@ async def cb_delete_cat(call: CallbackQuery, session: AsyncSession, user: User):
 @router.callback_query(F.data.startswith("confirm_del_cat_"))
 async def cb_delete_cat_do(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     cat_id = parse_callback_int(call.data, 3)
     if cat_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -719,7 +720,7 @@ KEYS_PAGE_SIZE = 10
 async def cb_admin_keys(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     """Список ключей товара (первая страница)."""
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     await state.clear()
     product_id = parse_callback_int(call.data, 2)
     if product_id is None:
@@ -732,7 +733,7 @@ async def cb_admin_keys(call: CallbackQuery, session: AsyncSession, user: User, 
 
     total = await count_product_keys(session, product_id)
     keys = await get_product_keys(session, product_id, offset=0, limit=KEYS_PAGE_SIZE)
-    kind = "♾ Безлимит" if product.is_unlimited else "📦 Обычный"
+    kind = f"{INFINITY} Безлимит" if product.is_unlimited else f"{BAG} Обычный"
     text = (
         f"{KEY} <b>Ключи: {product.name}</b>\n"
         f"{'━' * 16}\n\n"
@@ -752,7 +753,7 @@ async def cb_admin_keys(call: CallbackQuery, session: AsyncSession, user: User, 
 async def cb_admin_keys_page(call: CallbackQuery, session: AsyncSession, user: User):
     """Пагинация списка ключей."""
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     parts = call.data.split("_")
     # admin_keys_{product_id}_pg_{page}  →  [admin, keys, product_id, pg, page]
     try:
@@ -785,7 +786,7 @@ async def cb_admin_keys_page(call: CallbackQuery, session: AsyncSession, user: U
 async def cb_admin_key_detail(call: CallbackQuery, session: AsyncSession, user: User):
     """Детали одного ключа."""
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     key_id = parse_callback_int(call.data, 2)
     if key_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -818,7 +819,7 @@ async def cb_admin_key_detail(call: CallbackQuery, session: AsyncSession, user: 
 async def cb_admin_key_edit(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     """Начало редактирования ключа."""
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     key_id = parse_callback_int(call.data, 3)
     if key_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -871,7 +872,7 @@ async def process_key_edit_data(message: Message, session: AsyncSession, user: U
 async def cb_admin_key_del_confirm(call: CallbackQuery, session: AsyncSession, user: User):
     """Подтверждение удаления ключа."""
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     key_id = parse_callback_int(call.data, 3)
     if key_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -885,7 +886,7 @@ async def cb_admin_key_del_confirm(call: CallbackQuery, session: AsyncSession, u
 
     preview = item.data[:50] + "…" if len(item.data) > 52 else item.data
     await call.message.edit_text(
-        f"⚠️ <b>Удалить ключ #{key_id}?</b>\n\n"
+        f"{WARN} <b>Удалить ключ #{key_id}?</b>\n\n"
         f"<code>{preview}</code>\n\n"
         f"Это действие необратимо.",
         reply_markup=admin_confirm_key_del_kb(key_id, item.product_id),
@@ -898,7 +899,7 @@ async def cb_admin_key_del_confirm(call: CallbackQuery, session: AsyncSession, u
 async def cb_admin_key_del_do(call: CallbackQuery, session: AsyncSession, user: User):
     """Выполнение удаления ключа."""
     if not await is_admin(session, user.id):
-        return await call.answer("🚫 Нет доступа", show_alert=True)
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
     key_id = parse_callback_int(call.data, 3)
     if key_id is None:
         return await call.answer("Ошибка данных", show_alert=True)
@@ -910,11 +911,11 @@ async def cb_admin_key_del_do(call: CallbackQuery, session: AsyncSession, user: 
     ok, reason = await delete_product_key(session, key_id)
     if ok:
         await log_action(session, user.id, "delete_key", "product_item", key_id)
-        await call.answer(f"✅ Ключ #{key_id} удалён", show_alert=True)
+        await call.answer(f"{plain(OK)} Ключ #{key_id} удалён", show_alert=True)
         if product_id:
             call.data = f"admin_keys_{product_id}"
             await cb_admin_keys(call, session, user, None)
         else:
             await call.message.edit_text(f"{plain(OK)} Ключ удалён.", parse_mode="HTML")
     else:
-        await call.answer(f"❌ {reason}", show_alert=True)
+        await call.answer(f"{plain(FAIL)} {reason}", show_alert=True)
