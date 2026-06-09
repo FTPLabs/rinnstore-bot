@@ -282,7 +282,10 @@ async def _check_cryptobot(call, session, order_id, order):
             select(Payment).where(Payment.id == payment.id).with_for_update()
         )
         locked_payment = locked.scalar_one_or_none()
-        if not locked_payment or locked_payment.status == "paid":
+        if locked_payment is None:
+            await call.answer("Платёж не найден. Напишите в поддержку.", show_alert=True)
+            return
+        if locked_payment.status == "paid":
             delivered = await deliver_order(session, order_id)
             if delivered:
                 items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
@@ -347,7 +350,10 @@ async def _check_rollypay(call, session, order_id, order):
             select(Payment).where(Payment.id == payment.id).with_for_update()
         )
         locked_payment = locked.scalar_one_or_none()
-        if not locked_payment or locked_payment.status == "paid":
+        if locked_payment is None:
+            await call.answer("Платёж не найден. Напишите в поддержку.", show_alert=True)
+            return
+        if locked_payment.status == "paid":
             delivered = await deliver_order(session, order_id)
             if delivered:
                 items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
