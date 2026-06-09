@@ -48,7 +48,7 @@ async def setup_initial_admins():
                     continue
                 user_result = await session.execute(select(User).where(User.id == admin_id))
                 if not user_result.scalar_one_or_none():
-                    user = User(id=admin_id, first_name="Admin", referral_code=f"ADMIN{admin_id}")
+                    user = User(id=admin_id, first_name="Admin", referral_code=f"ADMIN{admin_id}", terms_accepted=True, captcha_passed=True)
                     session.add(user)
                     await session.flush()
                 admin = Admin(user_id=admin_id, role="superadmin")
