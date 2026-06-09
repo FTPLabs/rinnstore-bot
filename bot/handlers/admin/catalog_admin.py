@@ -21,7 +21,7 @@ from ...services.admin_service import (
 from ...utils.helpers import parse_callback_int
 from ...utils.emoji import (
     OK, FAIL, ADD, KEY, STATS, WARN, COINS, BAG, OPEN_FOLDER, CATEGORY,
-    RECEIVE, INFINITY, DELETE, BACK, SETTINGS, plain
+    RECEIVE, INFINITY, DELETE, BACK, SETTINGS, CATALOG, plain
 )
 
 logger = logging.getLogger(__name__)
