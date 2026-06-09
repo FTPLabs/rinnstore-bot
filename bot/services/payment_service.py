@@ -103,9 +103,10 @@ async def create_cryptobot_invoice(session: AsyncSession, order: Order) -> "Paym
         return None
 
     rate = await get_usdt_rate()
-    amount_usdt = (order.total_amount * rate).quantize(Decimal("0.01"))
-    if amount_usdt <= 0:
-        amount_usdt = Decimal("0.01")
+    # CryptoBot min = $0.01 USD. 0.01 USDT ≈ $0.00999 — под минимумом. Ставим 0.02 USDT.
+    amount_usdt = (order.total_amount * rate).quantize(Decimal("0.000001"))
+    if amount_usdt < Decimal("0.02"):
+        amount_usdt = Decimal("0.02")
 
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as http:
@@ -273,13 +274,23 @@ async def create_rollypay_invoice(
                 },
                 json=payload,
             ) as resp:
-                resp_data = await resp.json(content_type=None)
                 http_status = resp.status
+                raw_body = await resp.text()
     except Exception as e:
         logger.error(f"RollyPay createPayment error: {e}")
         return None
 
-    logger.info(f"RollyPay API response (order={order.id}, status={http_status}): {resp_data}")
+
+    logger.info(f"RollyPay HTTP {http_status}, body: {raw_body[:500]!r}")
+    if not raw_body.strip():
+        logger.error(f"RollyPay: HTTP {http_status} — пустой ответ. Проверьте API URL и API Key.")
+        return None
+    try:
+        import json as _json
+        resp_data = _json.loads(raw_body)
+    except Exception as _pe:
+        logger.error(f"RollyPay: JSON parse error (HTTP {http_status}): {_pe}. Body: {raw_body[:300]!r}")
+        return None
 
     if http_status not in (200, 201):
         logger.error(f"RollyPay: HTTP {http_status}: {resp_data}")
@@ -332,9 +343,20 @@ async def check_rollypay_payment(payment_id: str, api_key: str) -> str:
                     "Accept": "application/json",
                 },
             ) as resp:
-                data = await resp.json(content_type=None)
+                check_status = resp.status
+                check_raw = await resp.text()
     except Exception as e:
         logger.error(f"RollyPay check error (id={payment_id}): {e}")
+        return "error"
+
+    if not check_raw.strip():
+        logger.error(f"RollyPay check: HTTP {check_status} — пустой ответ (id={payment_id})")
+        return "error"
+    try:
+        import json as _json
+        data = _json.loads(check_raw)
+    except Exception as _pe:
+        logger.error(f"RollyPay check: JSON parse error (HTTP {check_status}): {_pe}")
         return "error"
 
     status = (data.get("status") or "").lower()
