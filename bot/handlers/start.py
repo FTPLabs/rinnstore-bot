@@ -11,6 +11,8 @@ from ..utils.i18n import t
 from ..services.settings_service import get_setting
 from ..services.user_service import get_referral_count, get_or_create_user
 from ..handlers.onboarding import start_onboarding
+from ..keyboards.user import catalog_kb
+from ..services.catalog_service import get_root_categories
 from ..utils.emoji import (
     PROFILE, USER, ATTACH, COINS, BAG, GIFT, LINK, SUPPORT, SETTINGS,
     ID_CARD, CROWN, TIMER, plain,
@@ -50,6 +52,13 @@ async def cmd_start(message: Message, user: User, state: FSMContext, session: As
 
     shop_name = await get_setting(session, "shop_name")
     await start_onboarding(message, user, session, state, bot, shop_name)
+    if len(args) > 1 and args[1].strip().lower() == "catalog" and user.terms_accepted and user.captcha_passed:
+        categories = await get_root_categories(session)
+        if categories:
+            await message.answer(
+                f"<b>{t(user, 'catalog')}</b>\n\n{t(user, 'choose_category')}",
+                reply_markup=catalog_kb(categories), parse_mode="HTML",
+            )
 
 
 @router.callback_query(F.data == "main_menu")
