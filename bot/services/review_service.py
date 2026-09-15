@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from aiogram import Bot
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from ..database import AsyncSessionFactory
 from ..models import Review, Order
 from ..services.settings_service import get_cached
@@ -41,7 +42,9 @@ async def process_review_jobs(bot: Bot) -> None:
     max_reminders = _int_setting("review_max_reminders", 3)
     async with AsyncSessionFactory() as session:
         result = await session.execute(
-            select(Review).where(
+            select(Review).options(
+                selectinload(Review.order).selectinload(Order.items)
+            ).where(
                 Review.status == "awaiting_rating",
                 Review.next_reminder_at <= now,
                 Review.reminders_sent < max_reminders,
@@ -65,7 +68,9 @@ async def process_review_jobs(bot: Bot) -> None:
         await session.commit()
 
         result = await session.execute(
-            select(Review).where(
+            select(Review).options(
+                selectinload(Review.order).selectinload(Order.items)
+            ).where(
                 Review.status == "completed",
                 Review.publication_status == "pending",
             ).order_by(Review.completed_at).limit(50).with_for_update(skip_locked=True)
