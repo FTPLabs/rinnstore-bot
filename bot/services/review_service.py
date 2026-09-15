@@ -6,7 +6,7 @@ from aiogram import Bot
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from ..database import AsyncSessionFactory
-from ..models import Review, Order
+from ..models import Review, Order, User
 from ..services.settings_service import get_cached
 from ..keyboards.review import rating_kb
 from ..utils.i18n import t
@@ -54,9 +54,10 @@ async def process_review_jobs(bot: Bot) -> None:
         for review in reviews:
             try:
                 product_names = ", ".join(item.product.name for item in (review.order.items if review.order else []) if item.product) or "—"
+                buyer = await session.get(User, review.user_id)
                 await bot.send_message(
                     review.user_id,
-                    t(review.order.user if review.order else "ru", "review_prompt", product=product_names, amount=review.order.total_amount if review.order else "—", order_id=review.order_id),
+                    t(buyer or "ru", "review_prompt", product=product_names, amount=review.order.total_amount if review.order else "—", order_id=review.order_id),
                     reply_markup=rating_kb(review.id),
                 )
                 review.reminders_sent += 1
