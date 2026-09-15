@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, or_, func
 from ..models import Order, OrderItem, Product, ProductItem, DeliveredItem, PromoCode, User
+from .review_service import create_review_if_missing
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +17,14 @@ async def create_order(
     cart_items: list[dict],
     promo_code: str | None = None,
 ) -> Order:
+    if not cart_items or any(int(item.get("qty", 0)) < 1 or int(item.get("qty", 0)) > 100 for item in cart_items):
+        raise ValueError("Некорректное количество товара")
     total = Decimal("0")
     discount = Decimal("0")
     promo_id = None
 
     for item in cart_items:
-        total += Decimal(str(item["price"])) * item["qty"]
+        total += Decimal(str(item["price"])).quantize(Decimal("0.01")) * int(item["qty"])
 
     if promo_code:
         result = await session.execute(
@@ -74,7 +77,7 @@ async def create_order(
             order_id=order.id,
             product_id=item["product_id"],
             quantity=item["qty"],
-            unit_price=Decimal(str(item["price"])),
+            unit_price=Decimal(str(item["price"])).quantize(Decimal("0.01")),
         )
         session.add(order_item)
 
@@ -103,16 +106,8 @@ async def cancel_order(session: AsyncSession, order_id: int) -> None:
         select(Order).where(Order.id == order_id).with_for_update()
     )
     order = result.scalar_one_or_none()
-    if not order:
+    if not order or order.status != "pending":
         return
-
-    # БАГ-ФИX: откатываем total_spent если заказ уже был доставлен
-    if order.status in ("delivered", "partial"):
-        await session.execute(
-            update(User)
-            .where(User.id == order.user_id)
-            .values(total_spent=func.greatest(User.total_spent - order.total_amount, Decimal("0")))
-        )
 
     if order.promo_code_id:
         await session.execute(
@@ -140,7 +135,7 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
         select(Order).where(Order.id == order_id).with_for_update()
     )
     order = result.scalar_one_or_none()
-    if not order:
+    if not order or order.status not in ("paid", "delivered", "partial"):
         return []
 
     # Проверяем, не выдан ли уже — атомарно в рамках той же блокировки
@@ -263,5 +258,7 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
                 )
                 logger.info(f"Referral bonus {bonus} credited to user {buyer.referred_by}")
 
+    if not out_of_stock:
+        await create_review_if_missing(session, order)
     await session.commit()
     return delivered_list

@@ -7,11 +7,13 @@ from sqlalchemy import select
 
 from ..models import User, Admin
 from ..keyboards.user import main_menu_kb, back_to_menu_kb, profile_kb
+from ..utils.i18n import t
 from ..services.settings_service import get_setting
 from ..services.user_service import get_referral_count, get_or_create_user
 from ..handlers.onboarding import start_onboarding
 from ..utils.emoji import (
-    PROFILE, USER, ATTACH, COINS, BAG, GIFT, LINK, SUPPORT, SETTINGS, plain,
+    PROFILE, USER, ATTACH, COINS, BAG, GIFT, LINK, SUPPORT, SETTINGS,
+    ID_CARD, CROWN, TIMER, plain,
 )
 
 router = Router()
@@ -58,6 +60,26 @@ async def cb_main_menu(call: CallbackQuery, user: User, state: FSMContext, sessi
     await call.answer()
 
 
+@router.callback_query(F.data == "language")
+async def cb_language(call: CallbackQuery, user: User):
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="Русский", callback_data="set_language_ru", style="primary"), InlineKeyboardButton(text="English", callback_data="set_language_en", style="primary"))
+    builder.row(InlineKeyboardButton(text=f"◀️ {t(user, 'back')}", callback_data="main_menu", style="primary"))
+    await call.message.edit_text(t(user, "choose_language"), reply_markup=builder.as_markup())
+    await call.answer()
+
+
+@router.callback_query(F.data.regexp(r"^set_language_(ru|en)$"))
+async def cb_set_language(call: CallbackQuery, user: User, session: AsyncSession, state: FSMContext, bot: Bot):
+    user.language_code = call.data.rsplit("_", 1)[-1]
+    await session.commit()
+    await call.answer(t(user, "language_changed"))
+    shop_name = await get_setting(session, "shop_name")
+    await start_onboarding(call, user, session, state, bot, shop_name)
+
+
 @router.callback_query(F.data == "profile")
 async def cb_profile(call: CallbackQuery, user: User, session: AsyncSession, bot: Bot):
     ref = user.referral_code or "—"
@@ -69,31 +91,31 @@ async def cb_profile(call: CallbackQuery, user: User, session: AsyncSession, bot
     reg_date = user.created_at.strftime("%d.%m.%Y") if user.created_at else "—"
     username_str = f"@{user.username}" if user.username else "—"
 
-    level = "🥉 Новичок"
+    level = "Новичок"
     if user.total_spent >= 10000:
-        level = "🥇 VIP"
+        level = "VIP"
     elif user.total_spent >= 3000:
-        level = "🥈 Постоянный"
+        level = "Постоянный"
 
     referral_bonus_str = f"{user.referral_bonus:.2f}" if user.referral_bonus else "0.00"
 
     text = (
-        f"<b>{PROFILE} Профиль</b>\n"
+        f"{PROFILE} <b>ПРОФИЛЬ</b>\n"
         f"{'━' * 20}\n\n"
-        f"🆔 ID: <code>{user.id}</code>\n"
-        f"{USER} Имя: {user.first_name or '—'}\n"
-        f"{ATTACH} Username: {username_str}\n"
-        f"🏅 Уровень: {level}\n"
-        f"📅 Регистрация: {reg_date}\n\n"
+        f"{ID_CARD} <b>ID:</b> <code>{user.id}</code>\n"
+        f"{USER} <b>Имя:</b> {user.first_name or '—'}\n"
+        f"{ATTACH} <b>Username:</b> {username_str}\n"
+        f"{CROWN} <b>Уровень:</b> {level}\n"
+        f"{TIMER} <b>Регистрация:</b> {reg_date}\n\n"
         f"{'━' * 20}\n"
-        f"{COINS} Баланс: <b>{user.balance:.2f} ₽</b>\n"
-        f"{BAG} Потрачено: <b>{user.total_spent:.2f} ₽</b>\n"
-        f"{GIFT} Реф. бонус: <b>{referral_bonus_str} ₽</b>\n\n"
+        f"{COINS} <b>Баланс: {user.balance:.2f} ₽</b>\n"
+        f"{BAG} <b>Потрачено: {user.total_spent:.2f} ₽</b>\n"
+        f"{GIFT} <b>Реф. бонус: {referral_bonus_str} ₽</b>\n\n"
         f"{'━' * 20}\n"
-        f"{LINK} Реф. программа\n"
-        f"Приглашено друзей: <b>{ref_count}</b>\n"
-        f"Ваш код: <code>{ref}</code>\n"
-        f"Ссылка: <code>{ref_link}</code>"
+        f"{LINK} <b>РЕФЕРАЛЬНАЯ ПРОГРАММА</b>\n"
+        f"<b>Приглашено друзей: {ref_count}</b>\n"
+        f"<b>Ваш код:</b> <code>{ref}</code>\n"
+        f"<b>Ссылка:</b> <code>{ref_link}</code>"
     )
     if is_admin:
         text += f"\n\n{'━' * 20}\n{SETTINGS} Роль: <b>Администратор</b>"

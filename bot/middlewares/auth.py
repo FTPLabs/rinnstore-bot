@@ -62,7 +62,7 @@ class UserMiddleware(BaseMiddleware):
                 fsm: FSMContext | None = data.get("state")
                 if fsm is not None:
                     current_state = await fsm.get_state()
-                    if current_state is not None:
+                    if current_state and current_state.startswith("Onboarding"):
                         return await handler(event, data)
                 if isinstance(event, Message):
                     await event.answer("Завершите регистрацию — отправьте /start")

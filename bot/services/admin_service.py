@@ -9,7 +9,17 @@ from ..models import (
 
 
 async def is_admin(session: AsyncSession, user_id: int) -> bool:
-    result = await session.execute(select(Admin).where(Admin.user_id == user_id))
+    result = await session.execute(select(Admin).where(
+        Admin.user_id == user_id,
+        Admin.role.in_(["manager", "superadmin"]),
+    ))
+    return result.scalar_one_or_none() is not None
+
+
+async def is_superadmin(session: AsyncSession, user_id: int) -> bool:
+    result = await session.execute(select(Admin).where(
+        Admin.user_id == user_id, Admin.role == "superadmin"
+    ))
     return result.scalar_one_or_none() is not None
 
 

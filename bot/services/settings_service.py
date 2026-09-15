@@ -14,6 +14,11 @@ _DEFAULTS = {
     "backup_interval": "6",
     "pp_url": "https://telegra.ph/Politika-konfidencialnosti--RINN-STORE-06-05",
     "tos_url": "https://telegra.ph/Polzovatelskoe-soglashenie--RINN-STORE-06-05",
+    "review_channel_id": "",
+    "reviews_enabled": "true",
+    "review_initial_delay_minutes": "1",
+    "review_reminder_interval_hours": "24",
+    "review_max_reminders": "3",
 }
 
 _cache: dict[str, str] = {}

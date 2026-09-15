@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton as TelegramInlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..utils.emoji import (
     BAG, CATEGORY, ORDERS, USERS, STATS, PROMO,
@@ -8,6 +8,13 @@ from ..utils.emoji import (
 )
 
 KEYS_PAGE_SIZE = 10
+
+def InlineKeyboardButton(*args, **kwargs):
+    text = kwargs.get("text", args[0] if args else "")
+    lower = str(text).lower()
+    kwargs.setdefault("style", "danger" if any(x in lower for x in ("удал", "отмен", "отключ", "заблок")) else "primary")
+    kwargs.setdefault("icon_custom_emoji_id", "5904692292324692386" if kwargs["style"] == "danger" else "5895440460322706085")
+    return TelegramInlineKeyboardButton(*args, **kwargs)
 
 
 def admin_main_kb() -> InlineKeyboardMarkup:

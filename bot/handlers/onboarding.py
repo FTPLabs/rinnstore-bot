@@ -11,6 +11,7 @@ from ..services.settings_service import get_setting
 from ..keyboards.user import main_menu_kb, welcome_kb, captcha_kb, channel_only_kb
 from ..utils.emoji import BROADCAST, plain
 from ..utils.captcha import generate_captcha
+from ..utils.i18n import t
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -22,8 +23,8 @@ class OnboardingState(StatesGroup):
     captcha = State()
 
 
-def _welcome_text(shop_name: str) -> str:
-    return f"<b>{shop_name}</b>\nЦифровые товары · Крипто · Мгновенно"
+def _welcome_text(shop_name: str, user=None) -> str:
+    return f"<b>{shop_name}</b>\n{t(user or 'ru', 'welcome_subtitle')}"
 
 
 async def _is_admin(session: AsyncSession, user_id: int) -> bool:
@@ -50,7 +51,7 @@ async def check_channel_member(bot: Bot, user_id: int) -> bool:
         return member.status not in ("left", "kicked", "restricted")
     except Exception as e:
         logger.warning(f"Channel check error for {channel}: {e}")
-        return True
+        return False
 
 
 async def start_onboarding(
@@ -108,8 +109,8 @@ async def start_onboarding(
 
     # ── Всё OK → главное меню ───────────────────────────────────────
     is_adm = await _is_admin(session, user.id)
-    text = _welcome_text(shop_name)
-    kb = main_menu_kb(is_admin=is_adm)
+    text = _welcome_text(shop_name, user)
+    kb = main_menu_kb(is_admin=is_adm, language=user.language_code)
     try:
         if is_call:
             await msg.edit_text(text, reply_markup=kb)
@@ -171,13 +172,13 @@ async def cb_check_channel(
         is_adm = await _is_admin(session, user.id)
         try:
             await call.message.edit_text(
-                _welcome_text(shop_name),
-                reply_markup=main_menu_kb(is_admin=is_adm),
+                _welcome_text(shop_name, user),
+                reply_markup=main_menu_kb(is_admin=is_adm, language=user.language_code),
             )
         except Exception:
             await call.message.answer(
-                _welcome_text(shop_name),
-                reply_markup=main_menu_kb(is_admin=is_adm),
+                _welcome_text(shop_name, user),
+                reply_markup=main_menu_kb(is_admin=is_adm, language=user.language_code),
             )
     else:
         await call.answer("Вы ещё не подписались на канал.", show_alert=True)
@@ -209,8 +210,8 @@ async def handle_captcha_answer(
         shop_name = await get_setting(session, "shop_name")
         is_adm = await _is_admin(session, user.id)
         await message.answer(
-            _welcome_text(shop_name),
-            reply_markup=main_menu_kb(is_admin=is_adm),
+            _welcome_text(shop_name, user),
+            reply_markup=main_menu_kb(is_admin=is_adm, language=user.language_code),
         )
     else:
         await state.clear()

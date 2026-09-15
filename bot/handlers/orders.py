@@ -59,7 +59,7 @@ async def cb_order_detail(call: CallbackQuery, session: AsyncSession, user: User
         f"Итого: <b>{order.total_amount} ₽</b>\n"
         f"Статус: {status_text}"
     )
-    await call.message.edit_text(text, reply_markup=order_detail_kb(order_id, order.status), parse_mode="HTML")
+    await call.message.edit_text(text, reply_markup=order_detail_kb(order_id, order.status, user.language_code), parse_mode="HTML")
     await call.answer()
 
 

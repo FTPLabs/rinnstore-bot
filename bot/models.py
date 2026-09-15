@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy import (
     BigInteger, Boolean, Column, DateTime, ForeignKey, Integer,
-    Numeric, String, Text, func, JSON, Index
+    Numeric, String, Text, func, JSON, Index, CheckConstraint
 )
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -220,3 +220,29 @@ class Setting(Base):
     value = Column(Text, nullable=False)
     description = Column(Text)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+    __table_args__ = (
+        Index("ix_reviews_user_status", "user_id", "status"),
+        Index("ix_reviews_due", "status", "next_reminder_at"),
+        CheckConstraint("rating IS NULL OR (rating >= 1 AND rating <= 5)", name="ck_reviews_rating"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, unique=True)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    rating = Column(Integer, nullable=True)
+    comment = Column(Text, nullable=True)
+    status = Column(String(32), nullable=False, default="awaiting_rating")
+    publication_status = Column(String(32), nullable=False, default="pending")
+    requested_at = Column(DateTime(timezone=True), server_default=func.now())
+    rated_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    next_reminder_at = Column(DateTime(timezone=True), nullable=True)
+    reminders_sent = Column(Integer, nullable=False, default=0)
+    last_error = Column(Text, nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    channel_message_id = Column(BigInteger, nullable=True)
+    order = relationship("Order", lazy="selectin")

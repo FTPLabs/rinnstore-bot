@@ -6,27 +6,35 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..keyboards.user import (
-    catalog_kb, subcatalog_kb, products_kb,
+    catalog_kb, subcatalog_kb, products_kb, in_stock_categories_kb, in_stock_subcategories_kb,
     back_to_menu_kb, payment_method_kb
 )
 from ..services.catalog_service import (
     get_root_categories, get_subcategories, get_category,
-    get_products_in_category, get_product,
+    get_products_in_category, get_all_active_products, get_product,
     get_stock_count, get_product_category_id, UNLIMITED_STOCK
 )
 from ..services.order_service import create_order
 from ..models import User
 from ..utils.helpers import parse_callback_int
+from ..utils.emoji import e
 
 router = Router()
 
 MAX_QTY_BUTTONS = 5
 
 
+async def _stock_map(session: AsyncSession, products: list) -> dict[int, int]:
+    result = {}
+    for product in products:
+        result[product.id] = await get_stock_count(session, product.id)
+    return result
+
+
 def _product_text(product, stock: int, qty: int = 1) -> str:
-    stock_line = "\u267e Безлимитно" if stock >= UNLIMITED_STOCK else f"В наличии: <b>{stock} шт.</b>"
+    stock_line = f"{e('5893321843149902412', '📦')} <b>Безлимитно</b>" if stock >= UNLIMITED_STOCK else f"{e('5893321843149902412', '📦')} <b>В наличии: {stock} шт.</b>"
     if stock == 0:
-        stock_line = "<b>\u274c Нет в наличии</b>"
+        stock_line = f"{e('5893163582194978381', '❌')} <b>Нет в наличии</b>"
 
     now = datetime.now(timezone.utc)
     has_discount = (
@@ -36,22 +44,19 @@ def _product_text(product, stock: int, qty: int = 1) -> str:
     if has_discount:
         d100 = Decimal("100")
         sale = product.price * (d100 - product.discount_percent) / d100
-        price_line = (
-            f"Цена: <s>{product.price} ₽</s> → <b>{sale:.2f} ₽</b>"
-            f"  \U0001f3f7 -{product.discount_percent}%"
-        )
+        price_line = f"<b>Цена: <s>{product.price} ₽</s> → {sale:.2f} ₽</b> {e('5893365462837760511', '🏷')}"
         unit_price = sale
     else:
-        price_line = f"Цена: <b>{product.price} ₽</b>"
+        price_line = f"<b>Цена: {product.price} ₽</b>"
         unit_price = product.price
 
-    desc = f"\n{product.description}\n" if product.description else "\n"
+    desc = f"\n<b>{product.description}</b>\n" if product.description else "\n"
     total_line = ""
     if qty > 1:
-        total_line = f"\nИтого за {qty} шт.: <b>{unit_price * qty:.2f} ₽</b>"
+        total_line = f"\n<b>Итого за {qty} шт.: {unit_price * qty:.2f} ₽</b>"
 
     return (
-        f"<b>{product.name}</b>{desc}\n"
+        f"{e('5893321843149902412', '📦')} <b>{product.name}</b>{desc}\n"
         f"{price_line}\n"
         f"{stock_line}"
         f"{total_line}"
@@ -62,7 +67,7 @@ def _product_kb(product_id: int, stock: int, qty: int = 1) -> object:
     builder = InlineKeyboardBuilder()
 
     if stock == 0:
-        builder.row(InlineKeyboardButton(text="\u274c Нет в наличии", callback_data="noop"))
+        builder.row(InlineKeyboardButton(text="Нет в наличии", callback_data="noop", icon_custom_emoji_id="5893163582194978381", style="danger"))
     else:
         max_qty = min(stock, MAX_QTY_BUTTONS) if stock < UNLIMITED_STOCK else MAX_QTY_BUTTONS
 
@@ -76,13 +81,15 @@ def _product_kb(product_id: int, stock: int, qty: int = 1) -> object:
                 ))
             builder.row(*qty_buttons)
 
-        buy_text = f"\U0001f6d2 Купить {qty} шт." if qty > 1 else "\U0001f6d2 Купить"
+        buy_text = f"Купить {qty} шт." if qty > 1 else "Купить"
         builder.row(InlineKeyboardButton(
             text=buy_text,
-            callback_data=f"buy_{product_id}_{qty}"
+            callback_data=f"buy_{product_id}_{qty}",
+            icon_custom_emoji_id="5893311672667345793",
+            style="danger",
         ))
 
-    builder.row(InlineKeyboardButton(text="\u25c0\ufe0f Назад", callback_data=f"cat_back_{product_id}"))
+    builder.row(InlineKeyboardButton(text="Назад", callback_data=f"cat_back_{product_id}", icon_custom_emoji_id="5893311672667345793", style="primary"))
     return builder.as_markup()
 
 
@@ -132,6 +139,86 @@ async def cb_catalog(call: CallbackQuery, session: AsyncSession, user: User):
     await call.answer()
 
 
+@router.callback_query(F.data == "in_stock")
+async def cb_in_stock(call: CallbackQuery, session: AsyncSession, user: User):
+    roots = await get_root_categories(session)
+    available_roots = []
+    for category in roots:
+        products = await get_products_in_category(session, category.id)
+        subcategories = await get_subcategories(session, category.id)
+        direct_available = any(await get_stock_count(session, product.id) > 0 for product in products)
+        child_available = False
+        for subcategory in subcategories:
+            child_products = await get_products_in_category(session, subcategory.id)
+            if any(await get_stock_count(session, product.id) > 0 for product in child_products):
+                child_available = True
+                break
+        if direct_available or child_available:
+            available_roots.append(category)
+    if not available_roots:
+        await call.message.edit_text(
+            "<b>В наличии</b>\n\nСейчас доступных товаров нет.",
+            reply_markup=back_to_menu_kb(), parse_mode="HTML",
+        )
+    else:
+        await call.message.edit_text(
+            "<b>В наличии</b>\n\nВыберите категорию:",
+            reply_markup=in_stock_categories_kb(available_roots),
+            parse_mode="HTML",
+        )
+    await call.answer()
+
+
+@router.callback_query(F.data.regexp(r"^stock_cat_\d+$"))
+async def cb_stock_category(call: CallbackQuery, session: AsyncSession, user: User):
+    category_id = int(call.data.rsplit("_", 1)[1])
+    category = await get_category(session, category_id)
+    if not category or not category.is_active:
+        await call.answer("Категория недоступна", show_alert=True)
+        return
+    subcategories = await get_subcategories(session, category_id)
+    available_subcategories = []
+    for subcategory in subcategories:
+        products = await get_products_in_category(session, subcategory.id)
+        if any(await get_stock_count(session, product.id) > 0 for product in products):
+            available_subcategories.append(subcategory)
+    direct_products = await get_products_in_category(session, category_id)
+    direct_products = [p for p in direct_products if await get_stock_count(session, p.id) > 0]
+    if available_subcategories:
+        await call.message.edit_text(
+            f"<b>{category.name}</b>\n\nВыберите подкатегорию:",
+            reply_markup=in_stock_subcategories_kb(available_subcategories), parse_mode="HTML",
+        )
+    elif direct_products:
+        stock_map = {p.id: await get_stock_count(session, p.id) for p in direct_products}
+        await call.message.edit_text(
+            f"<b>{category.name}</b>\n\nВыберите товар:",
+            reply_markup=products_kb(direct_products, category_id, stock_map=stock_map), parse_mode="HTML",
+        )
+    else:
+        await call.answer("В этой категории доступных товаров нет", show_alert=True)
+        return
+    await call.answer()
+
+
+@router.callback_query(F.data.regexp(r"^stock_subcat_\d+$"))
+async def cb_stock_subcategory(call: CallbackQuery, session: AsyncSession, user: User):
+    category_id = int(call.data.rsplit("_", 1)[1])
+    category = await get_category(session, category_id)
+    products = await get_products_in_category(session, category_id)
+    available = [p for p in products if await get_stock_count(session, p.id) > 0]
+    if not category or not available:
+        await call.answer("В подкатегории нет доступных товаров", show_alert=True)
+        return
+    stock_map = {p.id: await get_stock_count(session, p.id) for p in available}
+    await call.message.edit_text(
+        f"<b>{category.name}</b>\n\nВыберите товар:",
+        reply_markup=products_kb(available, category_id, parent_cat_id=category.parent_id, stock_map=stock_map),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
 @router.callback_query(F.data.regexp(r"^cat_\d+$"))
 async def cb_cat(call: CallbackQuery, session: AsyncSession, user: User):
     cat_id = parse_callback_int(call.data, 1)
@@ -164,9 +251,10 @@ async def cb_cat(call: CallbackQuery, session: AsyncSession, user: User):
         await call.answer()
         return
 
+    stock_map = await _stock_map(session, product_list)
     await call.message.edit_text(
         f"<b>\U0001f4c2 {category.name}</b>\n\nВыберите товар:",
-        reply_markup=products_kb(product_list, cat_id),
+        reply_markup=products_kb(product_list, cat_id, stock_map=stock_map),
         parse_mode="HTML"
     )
     await call.answer()
@@ -206,9 +294,10 @@ async def cb_subcat(call: CallbackQuery, session: AsyncSession, user: User):
         await call.answer()
         return
 
+    stock_map = await _stock_map(session, product_list)
     await call.message.edit_text(
         f"<b>\U0001f4c1 {category.name}</b>\n\nВыберите товар:",
-        reply_markup=products_kb(product_list, cat_id, parent_cat_id=category.parent_id),
+        reply_markup=products_kb(product_list, cat_id, parent_cat_id=category.parent_id, stock_map=stock_map),
         parse_mode="HTML"
     )
     await call.answer()
@@ -258,10 +347,11 @@ async def cb_cat_back(call: CallbackQuery, session: AsyncSession, user: User):
         return
 
     product_list = await get_products_in_category(session, cat_id)
+    stock_map = await _stock_map(session, product_list)
     icon = "\U0001f4c1" if category.parent_id else "\U0001f4c2"
     await call.message.edit_text(
         f"<b>{icon} {category.name}</b>\n\nВыберите товар:",
-        reply_markup=products_kb(product_list, cat_id, parent_cat_id=category.parent_id),
+        reply_markup=products_kb(product_list, cat_id, parent_cat_id=category.parent_id, stock_map=stock_map),
         parse_mode="HTML"
     )
     await call.answer()
@@ -278,6 +368,9 @@ async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User):
         qty = int(parts[2])
     except ValueError:
         await call.answer("Ошибка данных", show_alert=True)
+        return
+    if qty < 1 or qty > 100:
+        await call.answer("Можно купить от 1 до 100 шт.", show_alert=True)
         return
 
     product = await get_product(session, product_id)
@@ -309,10 +402,10 @@ async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User):
     order = await create_order(session, user.id, cart_items)
 
     await call.message.edit_text(
-        f"\U0001f6d2 <b>Заказ #{order.id} создан</b>\n\n"
-        f"{product.name} \u00d7 {qty}\n"
-        f"Итого: <b>{order.total_amount} ₽</b>\n\n"
-        f"Выберите способ оплаты:",
+        f"{e('5893311672667345793', '🔑')} <b>ЗАКАЗ #{order.id} СОЗДАН</b>\n\n"
+        f"<b>{product.name} × {qty}</b>\n"
+        f"<b>Итого: {order.total_amount} ₽</b>\n\n"
+        f"<b>Выберите способ оплаты:</b>",
         reply_markup=payment_method_kb(order.id, user.balance),
         parse_mode="HTML"
     )

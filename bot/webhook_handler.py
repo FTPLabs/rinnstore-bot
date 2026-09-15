@@ -76,20 +76,18 @@ async def rollypay_webhook(request: web.Request) -> web.Response:
         from .services.settings_service import get_cached
         signing_secret = get_cached("rollypay_signing_secret") or settings.rollypay_signing_secret
 
-        # Проверяем подпись если секрет задан
-        if signing_secret:
-            signature = (
-                request.headers.get("X-Signature")
-                or request.headers.get("X-RollyPay-Signature")
-                or ""
-            )
-            timestamp = request.headers.get("X-Timestamp", "")
-            if not signature:
-                logger.warning("RollyPay webhook: нет заголовка подписи")
-                return web.Response(status=401, text="Missing signature")
-            if not verify_rollypay_signature(body, signing_secret, signature, timestamp):
-                logger.warning(f"RollyPay webhook: неверная подпись")
-                return web.Response(status=401, text="Invalid signature")
+        if not signing_secret:
+            logger.error("RollyPay webhook отклонён: signing secret не настроен")
+            return web.Response(status=503, text="Webhook not configured")
+        signature = (
+            request.headers.get("X-Signature")
+            or request.headers.get("X-RollyPay-Signature")
+            or ""
+        )
+        timestamp = request.headers.get("X-Timestamp", "")
+        if not signature or not verify_rollypay_signature(body, signing_secret, signature, timestamp):
+            logger.warning("RollyPay webhook: неверная или отсутствующая подпись")
+            return web.Response(status=401, text="Invalid signature")
 
         data = json.loads(body)
         logger.info(f"RollyPay webhook: status={data.get('status')}, payment_id={data.get('payment_id')}")

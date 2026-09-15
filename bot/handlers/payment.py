@@ -1,7 +1,8 @@
 from decimal import Decimal
+import html
 from datetime import datetime, timezone
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message, PreCheckoutQuery, LabeledPrice
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ..models import User, Payment, Order
@@ -17,6 +18,94 @@ from ..utils.emoji import KEY, OK, FAIL, WARN, CARD, COINS, plain
 from ..config import settings as env_settings
 
 router = Router()
+
+
+@router.callback_query(F.data.startswith("pay_stars_"))
+async def cb_pay_stars(call: CallbackQuery, session: AsyncSession, user: User):
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
+    result = await session.execute(select(Order).where(Order.id == order_id).with_for_update())
+    order = result.scalar_one_or_none()
+    if not order or order.user_id != user.id or order.status != "pending":
+        await call.answer("Заказ недоступен", show_alert=True)
+        return
+    amount = max(1, int(Decimal(str(order.total_amount)).to_integral_value()))
+    payload = f"stars:{order.id}:{user.id}:{amount}"
+    existing = await session.execute(select(Payment).where(
+        Payment.order_id == order.id, Payment.provider == "telegram_stars", Payment.status == "pending"
+    ).order_by(Payment.id.desc()))
+    payment = existing.scalars().first()
+    if not payment:
+        payment = Payment(order_id=order.id, provider="telegram_stars", provider_invoice_id=payload,
+                          amount=amount, currency="XTR", status="pending", payload={"amount": amount})
+        session.add(payment)
+        await session.commit()
+    await call.message.answer_invoice(
+        title=f"Заказ #{order.id}", description="RINN STORE",
+        payload=payload, currency="XTR", provider_token="",
+        prices=[LabeledPrice(label=f"Заказ #{order.id}", amount=amount)],
+    )
+    await call.answer()
+
+
+@router.pre_checkout_query()
+async def pre_checkout(query: PreCheckoutQuery, session: AsyncSession):
+    parts = (query.invoice_payload or "").split(":")
+    if len(parts) != 4 or parts[0] != "stars":
+        await query.answer(ok=False, error_message="Некорректный платёж")
+        return
+    try:
+        order_id, user_id, amount = map(int, parts[1:])
+    except ValueError:
+        await query.answer(ok=False, error_message="Некорректные данные заказа")
+        return
+    result = await session.execute(select(Order).where(Order.id == order_id))
+    order = result.scalar_one_or_none()
+    if (not order or order.user_id != user_id or query.from_user.id != user_id
+            or order.status != "pending" or query.currency != "XTR" or query.total_amount != amount):
+        await query.answer(ok=False, error_message="Заказ уже недоступен")
+        return
+    await query.answer(ok=True)
+
+
+@router.message(F.successful_payment)
+async def successful_stars(message: Message, session: AsyncSession, user: User):
+    payment_data = message.successful_payment
+    parts = (payment_data.invoice_payload or "").split(":")
+    if len(parts) != 4 or parts[0] != "stars":
+        return
+    try:
+        order_id, user_id, amount = map(int, parts[1:])
+    except ValueError:
+        return
+    if user.id != user_id or payment_data.currency != "XTR" or payment_data.total_amount != amount:
+        return
+    result = await session.execute(select(Order).where(Order.id == order_id).with_for_update())
+    order = result.scalar_one_or_none()
+    if not order:
+        return
+    charge_id = payment_data.telegram_payment_charge_id
+    existing = await session.execute(select(Payment).where(Payment.provider_invoice_id == charge_id))
+    if existing.scalar_one_or_none():
+        return
+    pay_result = await session.execute(select(Payment).where(
+        Payment.order_id == order_id, Payment.provider == "telegram_stars"
+    ).order_by(Payment.id.desc()).with_for_update())
+    payment = pay_result.scalars().first()
+    if not payment or order.status != "pending":
+        return
+    payment.provider_invoice_id = charge_id
+    payment.status = "paid"
+    payment.amount = amount
+    payment.currency = "XTR"
+    order.status = "paid"
+    await session.commit()
+    delivered = await deliver_order(session, order_id)
+    if delivered:
+        items = "\n".join(f"{KEY} <code>{html.escape(str(d['data']))}</code>" for d in delivered)
+        await message.answer(f"{OK} <b>Оплата Stars прошла!</b>\n\n{items}", parse_mode="HTML")
 
 
 def _get_webhook_host() -> str:

@@ -12,19 +12,21 @@ from .database import engine, Base
 from .middlewares.db import DbSessionMiddleware
 from .middlewares.auth import UserMiddleware
 from .middlewares.throttling import ThrottlingMiddleware
-from .handlers import start, catalog, cart, payment, orders, promo
+from .handlers import privacy
+from .handlers import start, catalog, cart, payment, orders, promo, reviews
 from .handlers import onboarding
 from .handlers.admin import main as admin_main
 from .handlers.admin import products, orders_admin, users_admin, promos_admin, broadcast_admin
 from .handlers.admin import settings_admin
 from .handlers.admin import catalog_admin
-from .webhook_handler import setup_webhook_routes
 from .database import AsyncSessionFactory
 from .models import Admin, User
 from .services.settings_service import load_all_settings
 from .utils.backup import backup_scheduler
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from .webhook_handler import setup_webhook_routes
+from .services.review_service import review_worker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,7 +86,9 @@ async def main():
     dp.callback_query.middleware(UserMiddleware())
 
     dp.include_router(onboarding.router)
+    dp.include_router(reviews.router)
     dp.include_router(start.router)
+    dp.include_router(privacy.router)
     dp.include_router(catalog.router)
     dp.include_router(cart.router)
     dp.include_router(payment.router)
@@ -110,6 +114,11 @@ async def main():
     aiohttp_app["bot"] = bot
     setup_webhook_routes(aiohttp_app)
 
+    async def healthz(request):
+        return web.json_response({"status": "ok"})
+
+    aiohttp_app.router.add_get("/healthz", healthz)
+
     runner = web.AppRunner(aiohttp_app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", settings.port)
@@ -126,19 +135,29 @@ async def main():
         backup_hours = 6
         logger.warning("Некорректное значение backup_interval, используем 6ч")
 
+    await bot.delete_webhook(drop_pending_updates=False)
     backup_task = asyncio.create_task(
         backup_scheduler(settings.database_url, interval_hours=backup_hours)
     )
+    review_task = asyncio.create_task(review_worker(bot))
 
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         backup_task.cancel()
+        review_task.cancel()
         try:
             await backup_task
         except asyncio.CancelledError:
             pass
+        try:
+            await review_task
+        except asyncio.CancelledError:
+            pass
         await runner.cleanup()
+        await bot.session.close()
+        await storage.close()
+        await engine.dispose()
         await bot.session.close()
         logger.info("Бот остановлен")
 

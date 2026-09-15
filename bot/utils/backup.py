@@ -13,7 +13,7 @@ BACKUP_DIR = Path("/backups")
 TABLES = [
     "users", "admins", "categories", "products", "product_items",
     "orders", "order_items", "delivered_items", "payments",
-    "payment_events", "promo_codes", "audit_logs", "settings",
+    "payment_events", "promo_codes", "audit_logs", "settings", "reviews",
 ]
 
 
@@ -28,8 +28,9 @@ class _Encoder(json.JSONEncoder):
 
 async def create_backup(database_url: str) -> str | None:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_file = BACKUP_DIR / f"rinnstore_{timestamp}.json.gz"
+    tmp_file = out_file.with_suffix(".tmp")
 
     conn = None
     try:
@@ -47,8 +48,10 @@ async def create_backup(database_url: str) -> str | None:
                 dump["tables"][table] = []
 
         data = json.dumps(dump, cls=_Encoder, ensure_ascii=False, indent=2).encode("utf-8")
-        with gzip.open(out_file, "wb") as f:
+        with gzip.open(tmp_file, "wb") as f:
             f.write(data)
+        tmp_file.replace(out_file)
+        out_file.chmod(0o600)
 
         size_kb = out_file.stat().st_size // 1024
         logger.info(f"Backup created: {out_file} ({size_kb} KB)")
@@ -63,6 +66,11 @@ async def create_backup(database_url: str) -> str | None:
             try:
                 await conn.close()
             except Exception:
+                pass
+        if tmp_file.exists():
+            try:
+                tmp_file.unlink()
+            except OSError:
                 pass
 
 
