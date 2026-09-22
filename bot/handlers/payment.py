@@ -11,6 +11,7 @@ from ..services.payment_service import (
     create_cryptobot_invoice, get_payment_by_order, get_payment_by_order_provider,
     get_payment_for_check, check_cryptobot_invoice, mark_payment_paid,
     create_rollypay_invoice, check_rollypay_payment,
+    create_freekassa_invoice,
 )
 from ..services.order_service import get_order, deliver_order, cancel_order
 from ..utils.helpers import parse_callback_int
@@ -226,6 +227,34 @@ async def cb_pay_rollypay(call: CallbackQuery, session: AsyncSession, user: User
     )
 
 
+@router.callback_query(F.data.startswith("pay_freekassa_"))
+async def cb_pay_freekassa(call: CallbackQuery, session: AsyncSession, user: User):
+    order_id = parse_callback_int(call.data, 2)
+    if order_id is None:
+        await call.answer("Ошибка данных", show_alert=True)
+        return
+    result = await session.execute(select(Order).where(Order.id == order_id).with_for_update())
+    order = result.scalar_one_or_none()
+    if not order or order.user_id != user.id or order.status != "pending":
+        await call.answer("Заказ недоступен", show_alert=True)
+        return
+    existing = await get_payment_by_order_provider(session, order_id, "freekassa")
+    payment = existing or await create_freekassa_invoice(session, order)
+    if not payment or not payment.pay_url:
+        await call.message.edit_text(
+            f"{FAIL} FreeKAS временно не настроен. Выберите другой способ оплаты.",
+            reply_markup=back_to_menu_kb(), parse_mode="HTML",
+        )
+        await call.answer()
+        return
+    await call.message.edit_text(
+        f"<b>Оплата через FreeKAS</b>\n\nЗаказ: <b>#{order_id}</b>\n"
+        f"Сумма: <b>{order.total_amount} ₽</b>\n\nНажмите кнопку ниже для оплаты.",
+        reply_markup=payment_link_kb(payment.pay_url, order_id, "freekassa"), parse_mode="HTML",
+    )
+    await call.answer()
+
+
 # ── БАЛАНС ────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("pay_balance_"))
@@ -337,7 +366,9 @@ async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: Use
         await call.answer(f"{plain(OK)} Оплата подтверждена")
         return
 
-    if provider == "rollypay":
+    if provider == "freekassa":
+        await call.answer("Ожидаем подтверждение FreeKAS. Попробуйте ещё раз через несколько секунд.", show_alert=True)
+    elif provider == "rollypay":
         await _check_rollypay(call, session, order_id, order)
     else:
         await _check_cryptobot(call, session, order_id, order)

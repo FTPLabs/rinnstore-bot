@@ -400,13 +400,18 @@ async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User):
 
     cart_items = [{"product_id": product_id, "qty": qty, "price": unit_price}]
     order = await create_order(session, user.id, cart_items)
+    from ..services.settings_service import get_cached
+    freekassa_enabled = bool(
+        (get_cached("freekassa_shop_id") or "").strip()
+        and (get_cached("freekassa_secret_word_1") or "").strip()
+    )
 
     await call.message.edit_text(
         f"{e('5893311672667345793', '🔑')} <b>ЗАКАЗ #{order.id} СОЗДАН</b>\n\n"
         f"<b>{product.name} × {qty}</b>\n"
         f"<b>Итого: {order.total_amount} ₽</b>\n\n"
         f"<b>Выберите способ оплаты:</b>",
-        reply_markup=payment_method_kb(order.id, user.balance),
+        reply_markup=payment_method_kb(order.id, user.balance, freekassa_enabled=freekassa_enabled),
         parse_mode="HTML"
     )
     await call.answer()

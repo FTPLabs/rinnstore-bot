@@ -125,6 +125,7 @@ def payment_method_kb(
     order_id: int,
     user_balance: "Decimal | None" = None,
     rollypay_enabled: bool = True,
+    freekassa_enabled: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(
@@ -139,6 +140,11 @@ def payment_method_kb(
         builder.row(InlineKeyboardButton(
             text="СБП / RollyPay (RUB)", icon_custom_emoji_id="5902056028513505203", style="primary",
             callback_data=f"pay_rollypay_{order_id}",
+        ))
+    if freekassa_enabled:
+        builder.row(InlineKeyboardButton(
+            text="FreeKAS (карта / СБП)", style="primary",
+            callback_data=f"pay_freekassa_{order_id}",
         ))
     if user_balance is not None and user_balance > Decimal("0"):
         builder.row(InlineKeyboardButton(

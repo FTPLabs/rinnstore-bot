@@ -16,6 +16,76 @@ logger = logging.getLogger(__name__)
 
 CRYPTO_CURRENCY = "USDT"
 
+
+def freekassa_sign(shop_id: str, amount: str, secret: str, currency: str, order_id: str) -> str:
+    return hashlib.md5(f"{shop_id}:{amount}:{secret}:{currency}:{order_id}".encode()).hexdigest()
+
+
+async def create_freekassa_invoice(session: AsyncSession, order: Order) -> "Payment | None":
+    """Create a classic FreeKAS SCI payment link (GET, no API key required)."""
+    from urllib.parse import urlencode
+    from ..services.settings_service import get_cached
+    shop_id = (get_cached("freekassa_shop_id") or settings.freekassa_shop_id).strip()
+    secret = get_cached("freekassa_secret_word_1") or settings.freekassa_secret_word_1
+    if not shop_id or not secret:
+        logger.error("FreeKAS: shop ID or secret word 1 is not configured")
+        return None
+    amount = f"{Decimal(str(order.total_amount)):.2f}"
+    currency = "RUB"
+    order_ref = str(order.id)
+    params = {
+        "m": shop_id, "oa": amount, "o": order_ref,
+        "s": freekassa_sign(shop_id, amount, secret, currency, order_ref),
+        "currency": currency, "lang": "ru",
+    }
+    payment = Payment(
+        order_id=order.id, provider="freekassa", provider_invoice_id=order_ref,
+        amount=Decimal(amount), currency=currency, status="pending",
+        pay_url="https://pay.fk.money/?" + urlencode(params), payload=params,
+    )
+    session.add(payment)
+    await session.commit()
+    return payment
+
+
+async def process_freekassa_webhook(session: AsyncSession, data: dict) -> int | None:
+    """Verify and apply a FreeKAS SCI notification; return the order ID."""
+    from ..services.settings_service import get_cached
+    secret = get_cached("freekassa_secret_word_2") or settings.freekassa_secret_word_2
+    shop_id = get_cached("freekassa_shop_id") or settings.freekassa_shop_id
+    merchant_id = str(data.get("MERCHANT_ID", ""))
+    amount = str(data.get("AMOUNT", ""))
+    order_id = str(data.get("MERCHANT_ORDER_ID", ""))
+    signature = str(data.get("SIGN", "")).lower()
+    expected = hashlib.md5(f"{merchant_id}:{amount}:{secret}:{order_id}".encode()).hexdigest()
+    if not secret or (shop_id and merchant_id != str(shop_id)) or not hmac.compare_digest(expected, signature):
+        logger.warning("FreeKAS webhook: invalid merchant, configuration, or signature")
+        return None
+    try:
+        order_pk = int(order_id)
+        received_amount = Decimal(amount)
+    except (TypeError, ValueError):
+        return None
+    result = await session.execute(select(Order).where(Order.id == order_pk).with_for_update())
+    order = result.scalar_one_or_none()
+    if not order or order.status not in ("pending", "paid", "delivered"):
+        return None
+    if Decimal(str(order.total_amount)) != received_amount:
+        logger.warning("FreeKAS webhook: amount mismatch for order #%s", order_pk)
+        return None
+    result = await session.execute(select(Payment).where(Payment.order_id == order_pk, Payment.provider == "freekassa").with_for_update())
+    payment = result.scalars().first()
+    if not payment:
+        return None
+    if payment.status != "paid":
+        payment.status = "paid"
+        payment.paid_at = datetime.now(timezone.utc)
+        order.status = "paid"
+        session.add(PaymentEvent(payment_id=payment.id, event_type="payment", payload=data,
+                                 processed=True, idempotency_key=f"freekassa_{data.get('intid', order_id)}"))
+        await session.commit()
+    return order_pk
+
 # Кэш курса: обновляется каждые 5 минут
 _rate_cache: dict = {"rate": Decimal("0.011"), "updated_at": 0.0}
 

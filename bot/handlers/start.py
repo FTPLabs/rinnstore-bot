@@ -61,6 +61,14 @@ async def cmd_start(message: Message, user: User, state: FSMContext, session: As
             )
 
 
+@router.message(F.text.casefold().in_({"старт", "/старт"}))
+async def text_start(message: Message, user: User, state: FSMContext, session: AsyncSession, bot: Bot):
+    """Fallback for users typing «старт» instead of Telegram's /start command."""
+    await state.clear()
+    shop_name = await get_setting(session, "shop_name")
+    await start_onboarding(message, user, session, state, bot, shop_name)
+
+
 @router.callback_query(F.data == "main_menu")
 async def cb_main_menu(call: CallbackQuery, user: User, state: FSMContext, session: AsyncSession, bot: Bot):
     await state.clear()

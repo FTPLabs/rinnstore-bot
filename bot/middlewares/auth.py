@@ -9,13 +9,16 @@ _ONBOARDING_CALLBACKS = {
     "accept_terms", "refresh_captcha", "check_channel", "main_menu",
 }
 
-_ONBOARDING_COMMANDS = {"/start"}
+_ONBOARDING_COMMANDS = {"/start", "старт", "/старт"}
 
 
 def _is_onboarding_event(event: TelegramObject) -> bool:
     if isinstance(event, Message):
-        if event.text and event.text.split()[0] in _ONBOARDING_COMMANDS:
-            return True
+        if event.text:
+            command = event.text.split()[0].casefold()
+            # Telegram may deliver /start@bot_name in groups.
+            if command.split("@", 1)[0] in _ONBOARDING_COMMANDS:
+                return True
         return False
     if isinstance(event, CallbackQuery):
         d = event.data or ""

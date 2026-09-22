@@ -10,6 +10,7 @@ from .services.payment_service import (
     process_cryptobot_webhook,
     process_rollypay_webhook,
     verify_rollypay_signature,
+    process_freekassa_webhook,
 )
 from .services.order_service import get_order, deliver_order
 from .config import settings
@@ -114,6 +115,23 @@ async def rollypay_webhook(request: web.Request) -> web.Response:
         return web.Response(status=500, text="Internal Server Error")
 
 
+async def freekassa_webhook(request: web.Request) -> web.Response:
+    try:
+        data = dict(request.query)
+        if request.method == "POST":
+            data.update(await request.post())
+        order_id = None
+        async with AsyncSessionFactory() as session:
+            order_id = await process_freekassa_webhook(session, data)
+        if order_id:
+            await _notify_user_webhook(order_id, request.app.get("bot"))
+            return web.Response(text="YES")
+        return web.Response(status=400, text="Invalid notification")
+    except Exception as e:
+        logger.exception("FreeKAS webhook error: %s", e)
+        return web.Response(status=500, text="Internal Server Error")
+
+
 # ─── УВЕДОМЛЕНИЕ ПОЛЬЗОВАТЕЛЯ ──────────────────────────────────────────────────
 
 async def _notify_user_webhook(order_id: int, bot: Bot | None) -> None:
@@ -155,3 +173,5 @@ async def _notify_user_webhook(order_id: int, bot: Bot | None) -> None:
 def setup_webhook_routes(app: web.Application) -> None:
     app.router.add_post("/webhook/cryptobot", cryptobot_webhook)
     app.router.add_post("/webhook/rollypay", rollypay_webhook)
+    app.router.add_get("/webhook/freekassa", freekassa_webhook)
+    app.router.add_post("/webhook/freekassa", freekassa_webhook)
