@@ -14,6 +14,7 @@ from ..utils.i18n import t
 logger = logging.getLogger(__name__)
 BUY_URL = "https://t.me/rinnnstore_bot?start=catalog"
 KEY_EMOJI = '<tg-emoji emoji-id="5893311672667345793">🔑</tg-emoji>'
+STAR_EMOJI = '<tg-emoji emoji-id="5893034681636491040">⭐</tg-emoji>'
 
 
 def _int_setting(key: str, default: int) -> int:
@@ -38,7 +39,7 @@ def format_review_text(review: Review, order: Order | None, buyer: User | None, 
         f"<b>Стоимость товара:</b> {amount} ₽\n"
         f"<b>Номер заказа:</b> #{review.order_id}\n"
         f"<b>Покупатель:</b> {html.escape(author)}\n"
-        f"<b>Оценка:</b> {'⭐' * (review.rating or 0)} <b>{review.rating or 0}/5</b>\n"
+        f"<b>Оценка:</b> {STAR_EMOJI * (review.rating or 0)}\n"
         f"<b>Отзыв:</b> {comment}"
     )
 

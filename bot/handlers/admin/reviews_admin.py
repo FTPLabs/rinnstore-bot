@@ -15,7 +15,7 @@ router = Router()
 
 def buy_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🛒 Купить свой ключ", url=BUY_URL, style="primary")
+        InlineKeyboardButton(text="Купить свой ключ", url=BUY_URL, icon_custom_emoji_id="5893382531037794941", style="primary")
     ]])
 
 

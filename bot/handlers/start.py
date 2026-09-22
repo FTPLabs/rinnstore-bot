@@ -50,8 +50,6 @@ async def cmd_start(message: Message, user: User, state: FSMContext, session: As
                 user.referred_by = referrer.id
                 await session.commit()
 
-    shop_name = await get_setting(session, "shop_name")
-    await start_onboarding(message, user, session, state, bot, shop_name)
     if len(args) > 1 and args[1].strip().lower() == "catalog" and user.terms_accepted and user.captcha_passed:
         categories = await get_root_categories(session)
         if categories:
@@ -59,6 +57,9 @@ async def cmd_start(message: Message, user: User, state: FSMContext, session: As
                 f"<b>{t(user, 'catalog')}</b>\n\n{t(user, 'choose_category')}",
                 reply_markup=catalog_kb(categories, user.language_code), parse_mode="HTML",
             )
+        return
+    shop_name = await get_setting(session, "shop_name")
+    await start_onboarding(message, user, session, state, bot, shop_name)
 
 
 @router.message(Command("bot"))

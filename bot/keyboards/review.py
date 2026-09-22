@@ -3,6 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 BUY_URL = "https://t.me/rinnnstore_bot?start=catalog"
+BUY_EMOJI_ID = "5893382531037794941"
 
 
 def rating_kb(review_id: int) -> InlineKeyboardMarkup:
@@ -13,7 +14,7 @@ def rating_kb(review_id: int) -> InlineKeyboardMarkup:
             icon_custom_emoji_id="5893494861612455015", style="primary",
         ) for n in range(1, 6)
     ])
-    builder.row(InlineKeyboardButton(text="🛒 Купить свой ключ", url=BUY_URL, style="primary"))
+    builder.row(InlineKeyboardButton(text="Купить свой ключ", url=BUY_URL, icon_custom_emoji_id=BUY_EMOJI_ID, style="primary"))
     return builder.as_markup()
 
 
@@ -32,7 +33,7 @@ def comment_kb(review_id: int) -> InlineKeyboardMarkup:
         text="Пропустить комментарий", icon_custom_emoji_id="5893368370530621889", style="primary",
         callback_data=f"review_skip_{review_id}",
     ))
-    builder.row(InlineKeyboardButton(text="🛒 Купить свой ключ", url=BUY_URL, style="primary"))
+    builder.row(InlineKeyboardButton(text="Купить свой ключ", url=BUY_URL, icon_custom_emoji_id=BUY_EMOJI_ID, style="primary"))
     return builder.as_markup()
 
 
