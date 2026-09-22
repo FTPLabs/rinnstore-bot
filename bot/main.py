@@ -119,6 +119,23 @@ async def main():
 
     aiohttp_app.router.add_get("/healthz", healthz)
 
+    async def payment_success(request):
+        return web.Response(
+            text="<html><meta charset='utf-8'><title>Оплата успешна</title>"
+                 "<h2>Оплата прошла успешно</h2><p>Вернитесь в Telegram-бот — заказ будет выдан после подтверждения.</p></html>",
+            content_type="text/html",
+        )
+
+    async def payment_failure(request):
+        return web.Response(
+            text="<html><meta charset='utf-8'><title>Оплата не завершена</title>"
+                 "<h2>Оплата не завершена</h2><p>Вернитесь в Telegram-бот и попробуйте другой способ оплаты.</p></html>",
+            content_type="text/html",
+        )
+
+    aiohttp_app.router.add_get("/payment/success", payment_success)
+    aiohttp_app.router.add_get("/payment/failure", payment_failure)
+
     runner = web.AppRunner(aiohttp_app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", settings.port)
