@@ -13,7 +13,7 @@ from ..utils.i18n import t
 
 logger = logging.getLogger(__name__)
 BUY_URL = "https://t.me/rinnnstore_bot?start=catalog"
-KEY_EMOJI = '<tg-emoji emoji-id="5893311672667345793">🔑</tg-emoji>'
+KEY_EMOJI = '<tg-emoji emoji-id="5895713431264170680">✅</tg-emoji>'
 STAR_EMOJI = '<tg-emoji emoji-id="5893034681636491040">⭐</tg-emoji>'
 
 
