@@ -55,7 +55,11 @@ async def process_broadcast_text(message: Message, state: FSMContext):
         await message.answer(f"{FAIL} Сообщение пустое. Введите текст:", reply_markup=cancel_kb(), parse_mode="HTML")
         return
 
-    await state.update_data(broadcast_text=text)
+    await state.update_data(
+        broadcast_text=text,
+        broadcast_source_chat_id=message.chat.id,
+        broadcast_source_message_id=message.message_id,
+    )
     await state.set_state(BroadcastState.confirm)
 
     builder = InlineKeyboardBuilder()
@@ -90,6 +94,8 @@ async def process_confirm_broadcast(
 
     data = await state.get_data()
     text = data.get("broadcast_text", "")
+    source_chat_id = data.get("broadcast_source_chat_id")
+    source_message_id = data.get("broadcast_source_message_id")
     await state.clear()
 
     result = await session.execute(select(User.id).where(User.is_banned == False))
@@ -109,7 +115,16 @@ async def process_confirm_broadcast(
     try:
         for i, uid in enumerate(user_ids):
             try:
-                await bot.send_message(uid, text, parse_mode="HTML")
+                if source_chat_id and source_message_id:
+                    # copy_message preserves Telegram entities, including custom_emoji
+                    # (premium emoji), formatting, links, captions and attached media.
+                    await bot.copy_message(
+                        chat_id=uid,
+                        from_chat_id=source_chat_id,
+                        message_id=source_message_id,
+                    )
+                else:
+                    await bot.send_message(uid, text, parse_mode="HTML")
                 sent += 1
             except Exception as ex:
                 failed += 1

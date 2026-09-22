@@ -6,12 +6,14 @@ from aiogram import Bot
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from ..database import AsyncSessionFactory
-from ..models import Review, Order, User
+from ..models import Review, Order, User, Admin
 from ..services.settings_service import get_cached
-from ..keyboards.review import rating_kb
+from ..keyboards.review import moderation_kb, rating_kb
 from ..utils.i18n import t
 
 logger = logging.getLogger(__name__)
+BUY_URL = "https://t.me/rinnnstore_bot?start=catalog"
+KEY_EMOJI = '<tg-emoji emoji-id="5893311672667345793">🔑</tg-emoji>'
 
 
 def _int_setting(key: str, default: int) -> int:
@@ -19,6 +21,26 @@ def _int_setting(key: str, default: int) -> int:
         return max(0, int(get_cached(key) or default))
     except (TypeError, ValueError):
         return default
+
+
+def _product_names(order) -> str:
+    return ", ".join(item.product.name for item in (order.items if order else []) if item.product) or "—"
+
+
+def format_review_text(review: Review, order: Order | None, buyer: User | None, bot_username: str) -> str:
+    product = html.escape(_product_names(order))
+    amount = html.escape(str(order.total_amount if order else "—"))
+    comment = html.escape(review.comment or "Комментарий не оставлен")
+    author = "Анонимный покупатель" if review.anonymous else (f"@{buyer.username}" if buyer and buyer.username else (buyer.first_name if buyer else "Покупатель"))
+    return (
+        f"<b>{KEY_EMOJI} ОТЗЫВ В БОТЕ @{html.escape(bot_username)}</b>\n\n"
+        f"<b>Купленный товар:</b> {product}\n"
+        f"<b>Стоимость товара:</b> {amount} ₽\n"
+        f"<b>Номер заказа:</b> #{review.order_id}\n"
+        f"<b>Покупатель:</b> {html.escape(author)}\n"
+        f"<b>Оценка:</b> {'⭐' * (review.rating or 0)} <b>{review.rating or 0}/5</b>\n"
+        f"<b>Отзыв:</b> {comment}"
+    )
 
 
 async def review_worker(bot: Bot) -> None:
@@ -42,9 +64,7 @@ async def process_review_jobs(bot: Bot) -> None:
     max_reminders = _int_setting("review_max_reminders", 3)
     async with AsyncSessionFactory() as session:
         result = await session.execute(
-            select(Review).options(
-                selectinload(Review.order).selectinload(Order.items)
-            ).where(
+            select(Review).options(selectinload(Review.order).selectinload(Order.items)).where(
                 Review.status == "awaiting_rating",
                 Review.next_reminder_at <= now,
                 Review.reminders_sent < max_reminders,
@@ -53,11 +73,10 @@ async def process_review_jobs(bot: Bot) -> None:
         reviews = result.scalars().all()
         for review in reviews:
             try:
-                product_names = ", ".join(item.product.name for item in (review.order.items if review.order else []) if item.product) or "—"
                 buyer = await session.get(User, review.user_id)
                 await bot.send_message(
                     review.user_id,
-                    t(buyer or "ru", "review_prompt", product=product_names, amount=review.order.total_amount if review.order else "—", order_id=review.order_id),
+                    t(buyer or "ru", "review_prompt", product=_product_names(review.order), amount=review.order.total_amount if review.order else "—", order_id=review.order_id),
                     reply_markup=rating_kb(review.id),
                 )
                 review.reminders_sent += 1
@@ -69,31 +88,28 @@ async def process_review_jobs(bot: Bot) -> None:
         await session.commit()
 
         result = await session.execute(
-            select(Review).options(
-                selectinload(Review.order).selectinload(Order.items)
-            ).where(
+            select(Review).options(selectinload(Review.order).selectinload(Order.items)).where(
                 Review.status == "completed",
-                Review.publication_status == "pending",
+                Review.moderation_status == "pending",
             ).order_by(Review.completed_at).limit(50).with_for_update(skip_locked=True)
         )
         completed = result.scalars().all()
-        channel = get_cached("review_channel_id").strip()
-        if channel:
+        admins = (await session.execute(select(Admin.user_id))).scalars().all()
+        if admins:
+            me = await bot.get_me()
             for review in completed:
                 try:
-                    comment = html.escape(review.comment or "Комментарий не оставлен")
-                    text = (
-                        f"⭐ <b>Новый отзыв о заказе #{review.order_id}</b>\n"
-                        f"Оценка: <b>{review.rating}/5</b>\n"
-                        f"Комментарий: {comment}"
-                    )
-                    sent = await bot.send_message(channel, text, parse_mode="HTML")
-                    review.publication_status = "published"
-                    review.published_at = now
-                    review.channel_message_id = sent.message_id
+                    buyer = await session.get(User, review.user_id)
+                    text = format_review_text(review, review.order, buyer, me.username or "rinnnstore_bot")
+                    sent_ids = []
+                    for admin_id in admins:
+                        sent = await bot.send_message(admin_id, text, reply_markup=moderation_kb(review.id), parse_mode="HTML")
+                        sent_ids.append(sent.message_id)
+                    review.moderation_status = "notified"
+                    review.admin_message_id = sent_ids[0] if sent_ids else None
                 except Exception as exc:
                     review.last_error = str(exc)[:500]
-                    logger.warning("Review publication failed id=%s: %s", review.id, exc)
+                    logger.warning("Review moderation notification failed id=%s: %s", review.id, exc)
             await session.commit()
 
 
@@ -108,6 +124,7 @@ async def create_review_if_missing(session, order: Order) -> None:
         user_id=order.user_id,
         status="awaiting_rating",
         publication_status="pending",
+        moderation_status="pending",
         requested_at=now,
         next_reminder_at=now + timedelta(minutes=delay),
     ))

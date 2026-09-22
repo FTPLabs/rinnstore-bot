@@ -19,6 +19,7 @@ from .handlers.admin import main as admin_main
 from .handlers.admin import products, orders_admin, users_admin, promos_admin, broadcast_admin
 from .handlers.admin import settings_admin
 from .handlers.admin import catalog_admin
+from .handlers.admin import reviews_admin
 from .database import AsyncSessionFactory
 from .models import Admin, User
 from .services.settings_service import load_all_settings
@@ -67,6 +68,7 @@ async def create_tables():
         for table, columns in {
             "categories": {"name_en": "VARCHAR(255)", "description_en": "TEXT"},
             "products": {"name_en": "VARCHAR(255)", "description_en": "TEXT"},
+            "reviews": {"anonymous": "BOOLEAN NOT NULL DEFAULT 0", "moderation_status": "VARCHAR(32) NOT NULL DEFAULT 'pending'", "admin_message_id": "BIGINT"},
         }.items():
             existing = await conn.run_sync(
                 lambda sync_conn, table=table: {
@@ -114,6 +116,7 @@ async def main():
     dp.include_router(promos_admin.router)
     dp.include_router(broadcast_admin.router)
     dp.include_router(settings_admin.router)
+    dp.include_router(reviews_admin.router)
 
     await create_tables()
     await setup_initial_admins()
