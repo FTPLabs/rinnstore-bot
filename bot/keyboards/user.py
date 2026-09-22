@@ -21,7 +21,7 @@ def main_menu_kb(is_admin: bool = False, language: str = "ru") -> InlineKeyboard
         InlineKeyboardButton(text=t(language, "profile"), callback_data="profile", icon_custom_emoji_id="5902335789798265487", style="primary"),
     )
     builder.row(InlineKeyboardButton(text=t(language, "support"), callback_data="support", icon_custom_emoji_id="5893297890117292323", style="danger"))
-    builder.row(InlineKeyboardButton(text=t(language, "language"), callback_data="language", icon_custom_emoji_id="6039450035152753195", style="primary"))
+    builder.row(InlineKeyboardButton(text=t(language, "language"), callback_data="language", icon_custom_emoji_id="5893365462837760511", style="primary"))
     if is_admin:
         builder.row(InlineKeyboardButton(text=f"{plain(SETTINGS)} {t(language, 'admin')}", callback_data="admin_main"))
     return builder.as_markup()
