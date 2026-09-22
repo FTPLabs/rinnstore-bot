@@ -14,7 +14,7 @@ from ..utils.i18n import t
 logger = logging.getLogger(__name__)
 BUY_URL = "https://t.me/rinnnstore_bot?start=catalog"
 KEY_EMOJI = '<tg-emoji emoji-id="5895713431264170680">✅</tg-emoji>'
-STAR_EMOJI = '<tg-emoji emoji-id="5893034681636491040">⭐</tg-emoji>'
+STAR_EMOJI = '<tg-emoji emoji-id="5893494861612455015">⭐</tg-emoji>'
 
 
 def _int_setting(key: str, default: int) -> int:
