@@ -89,7 +89,7 @@ async def cb_language(call: CallbackQuery, user: User):
     from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="Русский", callback_data="set_language_ru", style="primary"), InlineKeyboardButton(text="English", callback_data="set_language_en", style="primary"))
-    builder.row(InlineKeyboardButton(text=f"◀️ {t(user, 'back')}", callback_data="main_menu", style="primary"))
+    builder.row(InlineKeyboardButton(text=t(user, "back"), callback_data="main_menu", icon_custom_emoji_id="5893368370530621889", style="primary"))
     await call.message.edit_text(t(user, "choose_language"), reply_markup=builder.as_markup())
     await call.answer()
 
