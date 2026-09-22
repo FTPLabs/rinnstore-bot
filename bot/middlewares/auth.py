@@ -9,7 +9,7 @@ _ONBOARDING_CALLBACKS = {
     "accept_terms", "refresh_captcha", "check_channel", "main_menu",
 }
 
-_ONBOARDING_COMMANDS = {"/start", "старт", "/старт"}
+_ONBOARDING_COMMANDS = {"/start", "/bot", "старт", "/старт"}
 
 
 def _is_onboarding_event(event: TelegramObject) -> bool:
@@ -55,10 +55,10 @@ class UserMiddleware(BaseMiddleware):
 
             if not _is_onboarding_event(event) and not user.terms_accepted:
                 if isinstance(event, Message):
-                    await event.answer("Для продолжения примите условия использования — отправьте /start")
+                    await event.answer("Для продолжения примите условия использования — отправьте /start или /bot")
                     return
                 elif isinstance(event, CallbackQuery):
-                    await event.answer("Сначала примите условия — отправьте /start", show_alert=True)
+                    await event.answer("Сначала примите условия — отправьте /start или /bot", show_alert=True)
                     return
 
             if not _is_onboarding_event(event) and user.terms_accepted and not user.captcha_passed:
@@ -68,10 +68,10 @@ class UserMiddleware(BaseMiddleware):
                     if current_state and current_state.startswith("Onboarding"):
                         return await handler(event, data)
                 if isinstance(event, Message):
-                    await event.answer("Завершите регистрацию — отправьте /start")
+                    await event.answer("Завершите регистрацию — отправьте /start или /bot")
                     return
                 elif isinstance(event, CallbackQuery):
-                    await event.answer("Завершите регистрацию — отправьте /start", show_alert=True)
+                    await event.answer("Завершите регистрацию — отправьте /start или /bot", show_alert=True)
                     return
 
         return await handler(event, data)

@@ -1,6 +1,6 @@
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -59,6 +59,12 @@ async def cmd_start(message: Message, user: User, state: FSMContext, session: As
                 f"<b>{t(user, 'catalog')}</b>\n\n{t(user, 'choose_category')}",
                 reply_markup=catalog_kb(categories), parse_mode="HTML",
             )
+
+
+@router.message(Command("bot"))
+async def cmd_bot(message: Message, user: User, state: FSMContext, session: AsyncSession, bot: Bot):
+    """Alias used by the deployed bot's Telegram menu command."""
+    await cmd_start(message, user, state, session, bot)
 
 
 @router.message(F.text.casefold().in_({"старт", "/старт"}))
