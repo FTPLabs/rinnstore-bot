@@ -7,7 +7,7 @@ from ..utils.emoji import (
     OPEN_FOLDER, CATEGORY, KEY, COINS, CLOCK, WARN,
     CARD, LINK, plain,
 )
-from ..utils.i18n import t
+from ..utils.i18n import t, localized_name
 
 
 def main_menu_kb(is_admin: bool = False, language: str = "ru") -> InlineKeyboardMarkup:
@@ -27,11 +27,11 @@ def main_menu_kb(is_admin: bool = False, language: str = "ru") -> InlineKeyboard
     return builder.as_markup()
 
 
-def profile_kb(ref_code: str, bot_username: str) -> InlineKeyboardMarkup:
+def profile_kb(ref_code: str, bot_username: str, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     ref_link = f"https://t.me/{bot_username}?start={ref_code}"
-    builder.row(InlineKeyboardButton(text="Моя реф. ссылка", url=ref_link, icon_custom_emoji_id="5902449142575141204", style="primary"))
-    builder.row(InlineKeyboardButton(text="Меню", callback_data="main_menu", icon_custom_emoji_id="5893311672667345793", style="primary"))
+    builder.row(InlineKeyboardButton(text="My referral link" if language == "en" else "Моя реф. ссылка", url=ref_link, icon_custom_emoji_id="5902449142575141204", style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'menu')}", callback_data="main_menu", icon_custom_emoji_id="5893311672667345793", style="primary"))
     return builder.as_markup()
 
 
@@ -77,47 +77,47 @@ def channel_kb(channel: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def catalog_kb(categories: list) -> InlineKeyboardMarkup:
+def catalog_kb(categories: list, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for cat in categories:
-        builder.row(InlineKeyboardButton(text=cat.name, callback_data=f"cat_{cat.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
-    builder.row(InlineKeyboardButton(text="В наличии", callback_data="in_stock", icon_custom_emoji_id="5893321843149902412", style="primary"))
-    builder.row(InlineKeyboardButton(text="Назад", callback_data="main_menu", icon_custom_emoji_id="5893311672667345793", style="primary"))
+        builder.row(InlineKeyboardButton(text=localized_name(cat, language), callback_data=f"cat_{cat.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'in_stock')}", callback_data="in_stock", icon_custom_emoji_id="5893321843149902412", style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data="main_menu", icon_custom_emoji_id="5893311672667345793", style="primary"))
     return builder.as_markup()
 
 
-def subcatalog_kb(subcategories: list, back_cb: str = "catalog") -> InlineKeyboardMarkup:
+def subcatalog_kb(subcategories: list, back_cb: str = "catalog", language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for cat in subcategories:
-        builder.row(InlineKeyboardButton(text=cat.name, callback_data=f"subcat_{cat.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
-    builder.row(InlineKeyboardButton(text="Назад", callback_data=back_cb, icon_custom_emoji_id="5893311672667345793", style="primary"))
+        builder.row(InlineKeyboardButton(text=localized_name(cat, language), callback_data=f"subcat_{cat.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data=back_cb, icon_custom_emoji_id="5893311672667345793", style="primary"))
     return builder.as_markup()
 
 
-def in_stock_categories_kb(categories: list) -> InlineKeyboardMarkup:
+def in_stock_categories_kb(categories: list, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for category in categories:
-        builder.row(InlineKeyboardButton(text=category.name, callback_data=f"stock_cat_{category.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
-    builder.row(InlineKeyboardButton(text="Назад", callback_data="catalog", icon_custom_emoji_id="5893311672667345793", style="primary"))
+        builder.row(InlineKeyboardButton(text=localized_name(category, language), callback_data=f"stock_cat_{category.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data="catalog", icon_custom_emoji_id="5893311672667345793", style="primary"))
     return builder.as_markup()
 
 
-def in_stock_subcategories_kb(categories: list, back_cb: str = "in_stock") -> InlineKeyboardMarkup:
+def in_stock_subcategories_kb(categories: list, back_cb: str = "in_stock", language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for category in categories:
-        builder.row(InlineKeyboardButton(text=category.name, callback_data=f"stock_subcat_{category.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
-    builder.row(InlineKeyboardButton(text="Назад", callback_data=back_cb, icon_custom_emoji_id="5893311672667345793", style="primary"))
+        builder.row(InlineKeyboardButton(text=localized_name(category, language), callback_data=f"stock_subcat_{category.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data=back_cb, icon_custom_emoji_id="5893311672667345793", style="primary"))
     return builder.as_markup()
 
 
-def products_kb(products: list, cat_id: int, parent_cat_id: int | None = None, stock_map: dict | None = None) -> InlineKeyboardMarkup:
+def products_kb(products: list, cat_id: int, parent_cat_id: int | None = None, stock_map: dict | None = None, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for product in products:
         stock = (stock_map or {}).get(product.id)
         stock_text = "∞" if stock is not None and stock >= 9999 else (str(stock) if stock is not None else "—")
-        builder.row(InlineKeyboardButton(text=f"{product.name} — {product.price} ₽ · {stock_text}", callback_data=f"prod_{product.id}", icon_custom_emoji_id="5893321843149902412", style="primary"))
+        builder.row(InlineKeyboardButton(text=f"{localized_name(product, language)} — {product.price} ₽ · {stock_text}", callback_data=f"prod_{product.id}", icon_custom_emoji_id="5893321843149902412", style="primary"))
     back_cb = f"subcat_{parent_cat_id}" if parent_cat_id else "catalog"
-    builder.row(InlineKeyboardButton(text="Назад", callback_data=back_cb, icon_custom_emoji_id="5893311672667345793", style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data=back_cb, icon_custom_emoji_id="5893311672667345793", style="primary"))
     return builder.as_markup()
 
 
@@ -126,10 +126,11 @@ def payment_method_kb(
     user_balance: "Decimal | None" = None,
     rollypay_enabled: bool = True,
     freekassa_enabled: bool = False,
+    language: str = "ru",
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(
-        text="Оплатить Stars", icon_custom_emoji_id="5893494861612455015", style="primary",
+        text="Pay with Stars" if language == "en" else "Оплатить Stars", icon_custom_emoji_id="5893494861612455015", style="primary",
         callback_data=f"pay_stars_{order_id}",
     ))
     builder.row(InlineKeyboardButton(
@@ -138,12 +139,12 @@ def payment_method_kb(
     ))
     if rollypay_enabled:
         builder.row(InlineKeyboardButton(
-            text="СБП / RollyPay (RUB)", icon_custom_emoji_id="5902056028513505203", style="primary",
+            text="SBP / RollyPay (RUB)" if language == "en" else "СБП / RollyPay (RUB)", icon_custom_emoji_id="5902056028513505203", style="primary",
             callback_data=f"pay_rollypay_{order_id}",
         ))
     if freekassa_enabled:
         builder.row(InlineKeyboardButton(
-            text="FreeKAS (карта / СБП)", style="primary",
+            text="FreeKAS (card / SBP)" if language == "en" else "FreeKAS (карта / СБП)", style="primary",
             callback_data=f"pay_freekassa_{order_id}",
         ))
     if user_balance is not None and user_balance > Decimal("0"):
@@ -152,30 +153,31 @@ def payment_method_kb(
             callback_data=f"pay_balance_{order_id}",
         ))
     builder.row(InlineKeyboardButton(
-        text="Отмена", icon_custom_emoji_id="5893163582194978381", style="danger",
+        text=f"{t(language, 'cancel')}", icon_custom_emoji_id="5893163582194978381", style="danger",
         callback_data=f"cancel_order_{order_id}",
     ))
     return builder.as_markup()
 
 
-def payment_link_kb(pay_url: str, order_id: int, provider: str = "crypto") -> InlineKeyboardMarkup:
+def payment_link_kb(pay_url: str, order_id: int, provider: str = "crypto", language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    btn_text = "Перейти к оплате (СБП)" if provider == "rollypay" else "Оплатить"
+    btn_text = ("Go to payment (SBP)" if language == "en" else "Перейти к оплате (СБП)") if provider == "rollypay" else ("Pay" if language == "en" else "Оплатить")
     builder.row(InlineKeyboardButton(text=btn_text, url=pay_url))
     builder.row(
         InlineKeyboardButton(
-            text=f"{plain(OK)} Проверить оплату",
+            text=f"{plain(OK)} {'Check payment' if language == 'en' else 'Проверить оплату'}",
             callback_data=f"check_payment_{order_id}_{provider}",
         ),
         InlineKeyboardButton(
-            text="Отмена",
+            text=t(language, "cancel"),
             callback_data=f"cancel_order_{order_id}",
         ),
     )
     return builder.as_markup()
 
 
-def orders_kb(orders: list) -> InlineKeyboardMarkup:
+def orders_kb(orders: list, language: str = "ru") -> InlineKeyboardMarkup:
+    from ..utils.i18n import t, localized_name
     builder = InlineKeyboardBuilder()
     status_icon = {
         "pending": plain(CLOCK),
@@ -190,7 +192,7 @@ def orders_kb(orders: list) -> InlineKeyboardMarkup:
             text=f"{icon} #{order.id} — {order.total_amount} ₽",
             callback_data=f"order_{order.id}",
         ))
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="main_menu"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} {t(language, 'back')}", callback_data="main_menu"))
     return builder.as_markup()
 
 
@@ -209,7 +211,7 @@ def order_detail_kb(order_id: int, status: str, language: str = "ru") -> InlineK
     return builder.as_markup()
 
 
-def back_to_menu_kb() -> InlineKeyboardMarkup:
+def back_to_menu_kb(language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Меню", callback_data="main_menu"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} {t(language, 'menu')}", callback_data="main_menu"))
     return builder.as_markup()

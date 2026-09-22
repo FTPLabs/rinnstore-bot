@@ -64,6 +64,18 @@ async def setup_initial_admins():
 async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        for table, columns in {
+            "categories": {"name_en": "VARCHAR(255)", "description_en": "TEXT"},
+            "products": {"name_en": "VARCHAR(255)", "description_en": "TEXT"},
+        }.items():
+            existing = await conn.run_sync(
+                lambda sync_conn, table=table: {
+                    row[1] for row in sync_conn.exec_driver_sql(f"PRAGMA table_info({table})")
+                }
+            )
+            for column, definition in columns.items():
+                if column not in existing:
+                    await conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     logger.info("Таблицы и индексы созданы/проверены")
 
 

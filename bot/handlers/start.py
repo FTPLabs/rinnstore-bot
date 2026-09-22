@@ -57,7 +57,7 @@ async def cmd_start(message: Message, user: User, state: FSMContext, session: As
         if categories:
             await message.answer(
                 f"<b>{t(user, 'catalog')}</b>\n\n{t(user, 'choose_category')}",
-                reply_markup=catalog_kb(categories), parse_mode="HTML",
+                reply_markup=catalog_kb(categories, user.language_code), parse_mode="HTML",
             )
 
 
@@ -114,42 +114,42 @@ async def cb_profile(call: CallbackQuery, user: User, session: AsyncSession, bot
     reg_date = user.created_at.strftime("%d.%m.%Y") if user.created_at else "—"
     username_str = f"@{user.username}" if user.username else "—"
 
-    level = "Новичок"
+    level = t(user, "newcomer")
     if user.total_spent >= 10000:
-        level = "VIP"
+        level = t(user, "vip")
     elif user.total_spent >= 3000:
-        level = "Постоянный"
+        level = t(user, "regular")
 
     referral_bonus_str = f"{user.referral_bonus:.2f}" if user.referral_bonus else "0.00"
 
     text = (
-        f"{PROFILE} <b>ПРОФИЛЬ</b>\n"
+        f"{PROFILE} <b>{t(user, 'profile_title')}</b>\n"
         f"{'━' * 20}\n\n"
         f"{ID_CARD} <b>ID:</b> <code>{user.id}</code>\n"
-        f"{USER} <b>Имя:</b> {user.first_name or '—'}\n"
+        f"{USER} <b>{t(user, 'name')}:</b> {user.first_name or '—'}\n"
         f"{ATTACH} <b>Username:</b> {username_str}\n"
-        f"{CROWN} <b>Уровень:</b> {level}\n"
-        f"{TIMER} <b>Регистрация:</b> {reg_date}\n\n"
+        f"{CROWN} <b>{t(user, 'level')}:</b> {level}\n"
+        f"{TIMER} <b>{t(user, 'registered')}:</b> {reg_date}\n\n"
         f"{'━' * 20}\n"
         f"{COINS} <b>Баланс: {user.balance:.2f} ₽</b>\n"
-        f"{BAG} <b>Потрачено: {user.total_spent:.2f} ₽</b>\n"
-        f"{GIFT} <b>Реф. бонус: {referral_bonus_str} ₽</b>\n\n"
+        f"{BAG} <b>{t(user, 'spent')}: {user.total_spent:.2f} ₽</b>\n"
+        f"{GIFT} <b>{t(user, 'ref_bonus')}: {referral_bonus_str} ₽</b>\n\n"
         f"{'━' * 20}\n"
-        f"{LINK} <b>РЕФЕРАЛЬНАЯ ПРОГРАММА</b>\n"
-        f"<b>Приглашено друзей: {ref_count}</b>\n"
-        f"<b>Ваш код:</b> <code>{ref}</code>\n"
-        f"<b>Ссылка:</b> <code>{ref_link}</code>"
+        f"{LINK} <b>{t(user, 'ref_program')}</b>\n"
+        f"<b>{t(user, 'invited')}: {ref_count}</b>\n"
+        f"<b>{t(user, 'your_code')}:</b> <code>{ref}</code>\n"
+        f"<b>{t(user, 'link')}:</b> <code>{ref_link}</code>"
     )
     if is_admin:
-        text += f"\n\n{'━' * 20}\n{SETTINGS} Роль: <b>Администратор</b>"
+        text += f"\n\n{'━' * 20}\n{SETTINGS} {t(user, 'role')}: <b>{t(user, 'administrator')}</b>"
 
-    await call.message.edit_text(text, reply_markup=profile_kb(ref, bot_username), parse_mode="HTML")
+    await call.message.edit_text(text, reply_markup=profile_kb(ref, bot_username, user.language_code), parse_mode="HTML")
     await call.answer()
 
 
 @router.callback_query(F.data == "support")
 async def cb_support(call: CallbackQuery, session: AsyncSession):
     username = await get_setting(session, "support_username")
-    text = f"<b>{SUPPORT} Поддержка</b>\n\nПишите нам: @{username}"
+    text = f"<b>{SUPPORT} {t(user, 'support')}</b>\n\n{t(user, 'write_support')}: @{username}"
     await call.message.edit_text(text, reply_markup=back_to_menu_kb(), parse_mode="HTML")
     await call.answer()
