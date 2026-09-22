@@ -11,6 +11,6 @@ router = Router()
 async def cb_cart(call: CallbackQuery, user):
     await call.message.edit_text(
         f"{BAG} {t(user, 'buy_from_product')}",
-        reply_markup=back_to_menu_kb(), parse_mode="HTML"
+        reply_markup=back_to_menu_kb(user.language_code), parse_mode="HTML"
     )
     await call.answer()

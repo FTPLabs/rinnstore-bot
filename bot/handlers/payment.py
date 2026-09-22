@@ -151,7 +151,7 @@ async def cb_pay_crypto(call: CallbackQuery, session: AsyncSession, user: User):
     if existing and existing.pay_url:
         await call.message.edit_text(
             f"<b>Оплата заказа #{order_id}</b>\n\nСумма: <b>{order.total_amount} ₽</b>",
-            reply_markup=payment_link_kb(existing.pay_url, order_id, "crypto"),
+            reply_markup=payment_link_kb(existing.pay_url, order_id, "crypto", user.language_code),
             parse_mode="HTML",
         )
         await call.answer()
@@ -163,7 +163,7 @@ async def cb_pay_crypto(call: CallbackQuery, session: AsyncSession, user: User):
     if not payment:
         await call.message.edit_text(
             f"{FAIL} Ошибка создания платежа. Попробуйте позже.",
-            reply_markup=back_to_menu_kb(),
+            reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
         return
@@ -172,7 +172,7 @@ async def cb_pay_crypto(call: CallbackQuery, session: AsyncSession, user: User):
         f"<b>Оплата заказа #{order_id}</b>\n\n"
         f"Сумма: <b>{order.total_amount} ₽</b>\n"
         f"К оплате: <b>{payment.amount} USDT</b>",
-        reply_markup=payment_link_kb(payment.pay_url, order_id, "crypto"),
+        reply_markup=payment_link_kb(payment.pay_url, order_id, "crypto", user.language_code),
         parse_mode="HTML",
     )
 
@@ -199,7 +199,7 @@ async def cb_pay_rollypay(call: CallbackQuery, session: AsyncSession, user: User
     if existing and existing.pay_url:
         await call.message.edit_text(
             f"{CARD} <b>Оплата через СБП — заказ #{order_id}</b>\n\nСумма: <b>{order.total_amount} ₽</b>",
-            reply_markup=payment_link_kb(existing.pay_url, order_id, "rollypay"),
+            reply_markup=payment_link_kb(existing.pay_url, order_id, "rollypay", user.language_code),
             parse_mode="HTML",
         )
         await call.answer()
@@ -212,7 +212,7 @@ async def cb_pay_rollypay(call: CallbackQuery, session: AsyncSession, user: User
     if not payment:
         await call.message.edit_text(
             f"{FAIL} Ошибка создания платежа RollyPay. Попробуйте другой способ оплаты.",
-            reply_markup=back_to_menu_kb(),
+            reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
         return
@@ -222,7 +222,7 @@ async def cb_pay_rollypay(call: CallbackQuery, session: AsyncSession, user: User
         f"Заказ: <b>#{order_id}</b>\n"
         f"Сумма: <b>{order.total_amount} ₽</b>\n\n"
         f"Нажмите кнопку ниже для перехода к оплате по СБП.",
-        reply_markup=payment_link_kb(payment.pay_url, order_id, "rollypay"),
+        reply_markup=payment_link_kb(payment.pay_url, order_id, "rollypay", user.language_code),
         parse_mode="HTML",
     )
 
@@ -243,14 +243,14 @@ async def cb_pay_freekassa(call: CallbackQuery, session: AsyncSession, user: Use
     if not payment or not payment.pay_url:
         await call.message.edit_text(
             f"{FAIL} FreeKAS временно не настроен. Выберите другой способ оплаты.",
-            reply_markup=back_to_menu_kb(), parse_mode="HTML",
+            reply_markup=back_to_menu_kb(user.language_code), parse_mode="HTML",
         )
         await call.answer()
         return
     await call.message.edit_text(
         f"<b>Оплата через FreeKAS</b>\n\nЗаказ: <b>#{order_id}</b>\n"
         f"Сумма: <b>{order.total_amount} ₽</b>\n\nНажмите кнопку ниже для оплаты.",
-        reply_markup=payment_link_kb(payment.pay_url, order_id, "freekassa"), parse_mode="HTML",
+        reply_markup=payment_link_kb(payment.pay_url, order_id, "freekassa", user.language_code), parse_mode="HTML",
     )
     await call.answer()
 
@@ -310,7 +310,7 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
         await call.message.edit_text(
             f"{OK} <b>Оплата прошла!</b>\n\n"
             f"{WARN} Произошла ошибка выдачи. Зайдите в <b>Мои заказы</b> и нажмите «Получить товар».",
-            reply_markup=back_to_menu_kb(),
+            reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
         await call.answer(f"{plain(OK)} Оплачено")
@@ -319,7 +319,7 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
     if not delivered:
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{WARN} Ошибка выдачи. Напишите в поддержку или зайдите в Мои заказы.",
-            reply_markup=back_to_menu_kb(),
+            reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
         await call.answer(f"{plain(OK)} Оплата прошла")
@@ -328,7 +328,7 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
     items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
     await call.message.edit_text(
         f"{OK} <b>Оплачено с баланса!</b>\n\n{items_text}\n\nСохраните данные.",
-        reply_markup=back_to_menu_kb(),
+        reply_markup=back_to_menu_kb(user.language_code),
         parse_mode="HTML",
     )
     await call.answer(f"{plain(OK)} Оплата прошла")
@@ -360,7 +360,7 @@ async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: Use
         items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
-            reply_markup=back_to_menu_kb(),
+            reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
         await call.answer(f"{plain(OK)} Оплата подтверждена")
@@ -390,7 +390,7 @@ async def _check_cryptobot(call, session, order_id, order):
         items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
-            reply_markup=back_to_menu_kb(),
+            reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
         await call.answer(f"{plain(OK)} Оплата подтверждена")
@@ -411,7 +411,7 @@ async def _check_cryptobot(call, session, order_id, order):
                 items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
                 await call.message.edit_text(
                     f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
-                    reply_markup=back_to_menu_kb(),
+                    reply_markup=back_to_menu_kb(user.language_code),
                     parse_mode="HTML",
                 )
             await call.answer(f"{plain(OK)} Оплата подтверждена")
@@ -424,7 +424,7 @@ async def _check_cryptobot(call, session, order_id, order):
         items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
-            reply_markup=back_to_menu_kb(),
+            reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
         await call.answer(f"{plain(OK)} Оплата подтверждена")
@@ -458,7 +458,7 @@ async def _check_rollypay(call, session, order_id, order):
         items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено через СБП!</b>\n\n{items_text}\n\nСохраните данные.",
-            reply_markup=back_to_menu_kb(),
+            reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
         await call.answer(f"{plain(OK)} Оплата подтверждена")
@@ -479,7 +479,7 @@ async def _check_rollypay(call, session, order_id, order):
                 items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
                 await call.message.edit_text(
                     f"{OK} <b>Оплачено через СБП!</b>\n\n{items_text}\n\nСохраните данные.",
-                    reply_markup=back_to_menu_kb(),
+                    reply_markup=back_to_menu_kb(user.language_code),
                     parse_mode="HTML",
                 )
             await call.answer(f"{plain(OK)} Оплата подтверждена")
@@ -492,7 +492,7 @@ async def _check_rollypay(call, session, order_id, order):
         items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено через СБП!</b>\n\n{items_text}\n\nСохраните данные.",
-            reply_markup=back_to_menu_kb(),
+            reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
         await call.answer(f"{plain(OK)} Оплата подтверждена")
@@ -524,7 +524,7 @@ async def cb_cancel_order(call: CallbackQuery, session: AsyncSession, user: User
     await cancel_order(session, order_id)
     await call.message.edit_text(
         f"{FAIL} <b>Заказ #{order_id} отменён.</b>",
-        reply_markup=back_to_menu_kb(),
+        reply_markup=back_to_menu_kb(user.language_code),
         parse_mode="HTML",
     )
     await call.answer("Заказ отменён")

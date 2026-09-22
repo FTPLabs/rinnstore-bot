@@ -39,12 +39,12 @@ async def process_promo_code(message: Message, session: AsyncSession, state: FSM
     promo = result.scalar_one_or_none()
 
     if not promo:
-        await message.answer("Промокод не найден.", reply_markup=back_to_menu_kb())
+        await message.answer("Промокод не найден.", reply_markup=back_to_menu_kb(user.language_code))
         await state.clear()
         return
 
     if promo.max_uses and promo.used_count >= promo.max_uses:
-        await message.answer("Промокод исчерпан.", reply_markup=back_to_menu_kb())
+        await message.answer("Промокод исчерпан.", reply_markup=back_to_menu_kb(user.language_code))
         await state.clear()
         return
 
@@ -60,5 +60,5 @@ async def process_promo_code(message: Message, session: AsyncSession, state: FSM
 
     await message.answer(
         f"✅ Промокод <b>{code}</b> применён.\nСкидка: <b>{discount_text}</b>",
-        reply_markup=back_to_menu_kb(),
+        reply_markup=back_to_menu_kb(user.language_code),
     )

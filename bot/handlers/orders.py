@@ -25,7 +25,7 @@ def status_text(status: str, user) -> str:
 async def cb_my_orders(call: CallbackQuery, session: AsyncSession, user: User):
     orders = await get_user_orders(session, user.id)
     if not orders:
-        await call.message.edit_text(t(user, "orders_empty"), reply_markup=back_to_menu_kb())
+        await call.message.edit_text(t(user, "orders_empty"), reply_markup=back_to_menu_kb(user.language_code))
         await call.answer()
         return
     await call.message.edit_text(
@@ -85,7 +85,7 @@ async def cb_get_items(call: CallbackQuery, session: AsyncSession, user: User):
     items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
     await call.message.edit_text(
         f"{OK} <b>{t(user, 'delivered_items')} #{order_id}</b>\n\n{items_text}",
-        reply_markup=back_to_menu_kb(),
+        reply_markup=back_to_menu_kb(user.language_code),
         parse_mode="HTML",
     )
     await call.answer()
