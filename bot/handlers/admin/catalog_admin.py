@@ -5,7 +5,7 @@
 import logging
 from decimal import Decimal, InvalidOperation
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton as TelegramInlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -19,6 +19,7 @@ from ...services.admin_service import (
     delete_product, delete_category, toggle_product, log_action,
 )
 from ...utils.helpers import parse_callback_int
+from ...utils.custom_emoji import emoji_id
 from ...utils.emoji import (
     OK, FAIL, ADD, KEY, STATS, WARN, COINS, BAG, OPEN_FOLDER, CATEGORY,
     RECEIVE, INFINITY, DELETE, BACK, SETTINGS, CATALOG, plain
@@ -28,6 +29,20 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 CANCEL_CB = "admin_catalog"
+
+def InlineKeyboardButton(*args, **kwargs):
+    text = str(kwargs.get("text", args[0] if args else ""))
+    lower = text.lower()
+    if "удал" in lower or "отмен" in lower or "скрыть" in lower:
+        kwargs.setdefault("style", "danger")
+        kwargs.setdefault("icon_custom_emoji_id", emoji_id("5893163582194978381"))
+    elif "готов" in lower or "создан" in lower or "включ" in lower:
+        kwargs.setdefault("style", "success")
+        kwargs.setdefault("icon_custom_emoji_id", emoji_id("5895514131896733546"))
+    else:
+        kwargs.setdefault("style", "primary")
+        kwargs.setdefault("icon_custom_emoji_id", emoji_id("5895440460322706085"))
+    return TelegramInlineKeyboardButton(*args, **kwargs)
 
 
 class CatalogState(StatesGroup):
@@ -103,10 +118,17 @@ def _pick_parent_kb(root_cats: list) -> object:
 
 def _pick_cat_for_prod_kb(all_cats: list) -> object:
     b = InlineKeyboardBuilder()
+    by_parent = {}
     for cat in all_cats:
-        prefix = f"  {plain(CATEGORY)}" if cat.parent_id else plain(OPEN_FOLDER)
-        b.row(InlineKeyboardButton(text=f"{prefix} {cat.name}", callback_data=f"cat_prod_in_{cat.id}"))
-    b.row(InlineKeyboardButton(text="✕ Отмена", callback_data=CANCEL_CB))
+        by_parent.setdefault(cat.parent_id, []).append(cat)
+    def add(parent_id, level=0, path=""):
+        for cat in by_parent.get(parent_id, []):
+            current = f"{path} → {cat.name}" if path else cat.name
+            prefix = "📁" if level == 0 else "└─ 📂"
+            b.row(InlineKeyboardButton(text=f"{prefix} {current}", callback_data=f"cat_prod_in_{cat.id}"))
+            add(cat.id, level + 1, current)
+    add(None)
+    b.row(InlineKeyboardButton(text="✕ Отмена", callback_data=CANCEL_CB, style="danger"))
     return b.as_markup()
 
 
@@ -322,7 +344,7 @@ async def cb_add_prod_pick(call: CallbackQuery, session: AsyncSession, user: Use
     if not active_cats:
         return await call.answer("Сначала создайте категорию.", show_alert=True)
     await call.message.edit_text(
-        f"{BAG} <b>Новый товар</b>\n\nВыберите категорию:",
+        f"{BAG} <b>Добавление товара — шаг 1 из 7</b>\n\n📁 Выберите конечную категорию, куда попадёт товар.\n\nПример: <b>Android → PUBG MOBILE → ZOLO</b>.\nТовар добавляется именно в последний выбранный уровень.",
         reply_markup=_pick_cat_for_prod_kb(_sorted_cats_for_picker(active_cats)),
         parse_mode="HTML",
     )
@@ -343,7 +365,7 @@ async def cb_prod_cat_chosen(call: CallbackQuery, session: AsyncSession, user: U
     await state.update_data(prod_cat_id=cat_id, prod_cat_name=cat.name)
     await state.set_state(CatalogState.prod_name)
     await call.message.edit_text(
-        f"{BAG} <b>Новый товар в «{cat.name}»</b>\n\nНазвание:",
+        f"{BAG} <b>Добавление товара — шаг 2 из 7</b>\n\nКатегория: <b>{cat.name}</b>\n\nВведите название товара.\nНапример: <i>1 день</i>, <i>7 дней</i> или <i>новый аккаунт</i>.",
         reply_markup=_cancel_kb(f"cat_view_{cat_id}"),
         parse_mode="HTML",
     )
@@ -380,7 +402,7 @@ async def process_prod_name(message: Message, session: AsyncSession, user: User,
         return await message.answer(f"{FAIL} Название: 2–255 символов.", reply_markup=_cancel_kb(), parse_mode="HTML")
     await state.update_data(prod_name_val=name)
     await state.set_state(CatalogState.prod_desc)
-    await message.answer("📝 Описание товара или <b>-</b>:", reply_markup=_cancel_kb(), parse_mode="HTML")
+    await message.answer("📝 <b>Шаг 3 из 7 — описание</b>\n\nВведите текст, который увидит клиент в карточке товара.\nМожно указать функции, срок действия, условия и ограничения.\nЕсли описание не нужно — отправьте <b>-</b>.", reply_markup=_cancel_kb(), parse_mode="HTML")
 
 
 @router.message(CatalogState.prod_desc)
@@ -389,7 +411,7 @@ async def process_prod_desc(message: Message, session: AsyncSession, user: User,
         return
     await state.update_data(prod_desc_val="" if (message.text or "").strip() == "-" else (message.text or "").strip())
     await state.set_state(CatalogState.prod_image)
-    await message.answer("🖼 Фото товара или <b>-</b>:", reply_markup=_cancel_kb(), parse_mode="HTML")
+    await message.answer("🖼 <b>Шаг 4 из 7 — фотография</b>\n\nОтправьте изображение товара как обычное фото Telegram.\nОно будет показано клиенту вместе с названием, описанием и ценой.\nЕсли фото не нужно — отправьте <b>-</b>.", reply_markup=_cancel_kb(), parse_mode="HTML")
 
 
 @router.message(CatalogState.prod_image)
@@ -398,7 +420,7 @@ async def process_prod_image(message: Message, session: AsyncSession, user: User
         return
     await state.update_data(prod_image_val=message.photo[-1].file_id if message.photo else None)
     await state.set_state(CatalogState.prod_price)
-    await message.answer(f"{COINS} Цена (₽):", reply_markup=_cancel_kb(), parse_mode="HTML")
+    await message.answer(f"{COINS} <b>Шаг 5 из 7 — цена</b>\n\nВведите стоимость одного товара в рублях.\nНапример: <b>249</b>", reply_markup=_cancel_kb(), parse_mode="HTML")
 
 
 @router.message(CatalogState.prod_price)
@@ -415,7 +437,7 @@ async def process_prod_price(message: Message, session: AsyncSession, user: User
     data = await state.get_data()
     cat_id = data.get("prod_cat_id", 0)
     await message.answer(
-        f"{BAG} <b>Тип товара:</b>\n"
+        f"{BAG} <b>Шаг 6 из 7 — тип товара</b>\n\n"
         f"• <b>Обычный</b> — каждый ключ = один покупатель\n"
         f"• <b>Безлимитный</b> — один ключ для всех",
         reply_markup=_prod_type_kb(cat_id),
@@ -448,8 +470,7 @@ async def process_prod_type(call: CallbackQuery, session: AsyncSession, user: Us
     kind_label = "безлимитный" if is_unlimited else "обычный"
     cat_id = data["prod_cat_id"]
     await call.message.edit_text(
-        f"{OK} <b>{product.name}</b> создан ({kind_icon} {kind_label}) — {product.price} ₽\n\n"
-        f"Отправьте ключи (каждый с новой строки) или нажмите <b>Готово</b>:",
+        f"{OK} <b>Шаг 7 из 7 — ключи</b>\n\nТовар <b>{product.name}</b> создан.\nЦена: <b>{product.price} ₽</b>\nТип: <b>{kind_label}</b>.\n\nОтправьте ключи — каждый с новой строки.\nДля безлимитного товара отправьте общий ключ.\nЕсли ключи добавите позже, нажмите <b>Готово</b>.",
         reply_markup=_keys_kb(product.id, cat_id),
         parse_mode="HTML",
     )

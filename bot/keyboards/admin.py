@@ -158,7 +158,7 @@ def admin_products_kb(products: list) -> InlineKeyboardMarkup:
         ))
     builder.row(InlineKeyboardButton(
         text=f"{plain(ADD)} Добавить товар",
-        callback_data="admin_add_product"
+        callback_data="cat_add_prod_pick"
     ))
     builder.row(
         InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_catalog"),
