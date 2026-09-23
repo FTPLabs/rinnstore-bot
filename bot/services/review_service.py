@@ -10,7 +10,7 @@ from ..models import Review, Order, User, Admin
 from ..services.settings_service import get_cached
 from ..keyboards.review import moderation_kb, rating_kb
 from ..utils.i18n import t
-from ..utils.custom_emoji_service import emoji_html
+from .custom_emoji_service import emoji_html
 
 logger = logging.getLogger(__name__)
 BUY_URL = "https://t.me/rinnnstore_bot?start=catalog"
