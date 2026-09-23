@@ -149,12 +149,19 @@ async def cb_in_stock(call: CallbackQuery, session: AsyncSession, user: User):
     for category in roots:
         products = await get_products_in_category(session, category.id)
         subcategories = await get_subcategories(session, category.id)
-        direct_available = any(await get_stock_count(session, product.id) > 0 for product in products)
+        direct_available = False
+        for product in products:
+            if await get_stock_count(session, product.id) > 0:
+                direct_available = True
+                break
         child_available = False
         for subcategory in subcategories:
             child_products = await get_products_in_category(session, subcategory.id)
-            if any(await get_stock_count(session, product.id) > 0 for product in child_products):
-                child_available = True
+            for product in child_products:
+                if await get_stock_count(session, product.id) > 0:
+                    child_available = True
+                    break
+            if child_available:
                 break
         if direct_available or child_available:
             available_roots.append(category)
@@ -183,8 +190,10 @@ async def cb_stock_category(call: CallbackQuery, session: AsyncSession, user: Us
     available_subcategories = []
     for subcategory in subcategories:
         products = await get_products_in_category(session, subcategory.id)
-        if any(await get_stock_count(session, product.id) > 0 for product in products):
-            available_subcategories.append(subcategory)
+        for product in products:
+            if await get_stock_count(session, product.id) > 0:
+                available_subcategories.append(subcategory)
+                break
     direct_products = await get_products_in_category(session, category_id)
     direct_products = [p for p in direct_products if await get_stock_count(session, p.id) > 0]
     if available_subcategories:
