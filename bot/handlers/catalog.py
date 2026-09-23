@@ -122,6 +122,22 @@ def _get_back_cb(category) -> str:
     return f"subcat_{category.parent_id}"
 
 
+async def _category_has_stock(session: AsyncSession, category_id: int, visited: set[int] | None = None) -> bool:
+    """Return whether this category or any active descendant has stock."""
+    visited = visited or set()
+    if category_id in visited:
+        return False
+    visited.add(category_id)
+
+    for product in await get_products_in_category(session, category_id):
+        if await get_stock_count(session, product.id) > 0:
+            return True
+    for child in await get_subcategories(session, category_id):
+        if await _category_has_stock(session, child.id, visited):
+            return True
+    return False
+
+
 @router.callback_query(F.data == "noop")
 async def cb_noop(call: CallbackQuery):
     await call.answer()
@@ -144,27 +160,13 @@ async def cb_catalog(call: CallbackQuery, session: AsyncSession, user: User):
 
 @router.callback_query(F.data == "in_stock")
 async def cb_in_stock(call: CallbackQuery, session: AsyncSession, user: User):
-    roots = await get_root_categories(session)
-    available_roots = []
-    for category in roots:
-        products = await get_products_in_category(session, category.id)
-        subcategories = await get_subcategories(session, category.id)
-        direct_available = False
-        for product in products:
-            if await get_stock_count(session, product.id) > 0:
-                direct_available = True
-                break
-        child_available = False
-        for subcategory in subcategories:
-            child_products = await get_products_in_category(session, subcategory.id)
-            for product in child_products:
-                if await get_stock_count(session, product.id) > 0:
-                    child_available = True
-                    break
-            if child_available:
-                break
-        if direct_available or child_available:
-            available_roots.append(category)
+    # The availability view must include hidden roots: an admin can hide a
+    # category from the regular catalog while its stock is still sellable.
+    roots = await get_root_categories(session, include_inactive=True)
+    available_roots = [
+        category for category in roots
+        if await _category_has_stock(session, category.id)
+    ]
     if not available_roots:
         await call.message.edit_text(
             "<b>В наличии</b>\n\nСейчас доступных товаров нет.",
@@ -183,19 +185,20 @@ async def cb_in_stock(call: CallbackQuery, session: AsyncSession, user: User):
 async def cb_stock_category(call: CallbackQuery, session: AsyncSession, user: User):
     category_id = int(call.data.rsplit("_", 1)[1])
     category = await get_category(session, category_id)
-    if not category or not category.is_active:
+    if not category or not await _category_has_stock(session, category_id):
         await call.answer("Категория недоступна", show_alert=True)
         return
     subcategories = await get_subcategories(session, category_id)
     available_subcategories = []
     for subcategory in subcategories:
-        products = await get_products_in_category(session, subcategory.id)
-        for product in products:
-            if await get_stock_count(session, product.id) > 0:
-                available_subcategories.append(subcategory)
-                break
+        if await _category_has_stock(session, subcategory.id):
+            available_subcategories.append(subcategory)
     direct_products = await get_products_in_category(session, category_id)
-    direct_products = [p for p in direct_products if await get_stock_count(session, p.id) > 0]
+    direct_available_products = []
+    for product in direct_products:
+        if await get_stock_count(session, product.id) > 0:
+            direct_available_products.append(product)
+    direct_products = direct_available_products
     if available_subcategories:
         await call.message.edit_text(
             f"<b>{localized_name(category, user)}</b>\n\nВыберите подкатегорию:",
@@ -218,7 +221,10 @@ async def cb_stock_subcategory(call: CallbackQuery, session: AsyncSession, user:
     category_id = int(call.data.rsplit("_", 1)[1])
     category = await get_category(session, category_id)
     products = await get_products_in_category(session, category_id)
-    available = [p for p in products if await get_stock_count(session, p.id) > 0]
+    available = []
+    for product in products:
+        if await get_stock_count(session, product.id) > 0:
+            available.append(product)
     if not category or not available:
         await call.answer("В подкатегории нет доступных товаров", show_alert=True)
         return

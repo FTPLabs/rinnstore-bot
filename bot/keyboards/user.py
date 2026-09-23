@@ -163,15 +163,24 @@ def payment_method_kb(
 def payment_link_kb(pay_url: str, order_id: int, provider: str = "crypto", language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     btn_text = ("Go to payment (SBP)" if language == "en" else "Перейти к оплате (СБП)") if provider == "rollypay" else ("Pay" if language == "en" else "Оплатить")
-    builder.row(InlineKeyboardButton(text=btn_text, url=pay_url))
+    builder.row(InlineKeyboardButton(
+        text=btn_text,
+        url=pay_url,
+        icon_custom_emoji_id=emoji_id("5893473283696759404"),
+        style="primary",
+    ))
     builder.row(
         InlineKeyboardButton(
             text=f"{plain(OK)} {'Check payment' if language == 'en' else 'Проверить оплату'}",
             callback_data=f"check_payment_{order_id}_{provider}",
+            icon_custom_emoji_id=emoji_id("5895514131896733546"),
+            style="success",
         ),
         InlineKeyboardButton(
             text=t(language, "cancel"),
             callback_data=f"cancel_order_{order_id}",
+            icon_custom_emoji_id=emoji_id("5893163582194978381"),
+            style="danger",
         ),
     )
     return builder.as_markup()
@@ -214,5 +223,10 @@ def order_detail_kb(order_id: int, status: str, language: str = "ru") -> InlineK
 
 def back_to_menu_kb(language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} {t(language, 'menu')}", callback_data="main_menu"))
+    builder.row(InlineKeyboardButton(
+        text=f"{plain(BACK)} {t(language, 'menu')}",
+        callback_data="main_menu",
+        icon_custom_emoji_id=emoji_id("5893311672667345793"),
+        style="primary",
+    ))
     return builder.as_markup()

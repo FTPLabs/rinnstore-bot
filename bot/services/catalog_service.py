@@ -5,11 +5,14 @@ from ..models import Category, Product, ProductItem
 UNLIMITED_STOCK = 9999
 
 
-async def get_root_categories(session: AsyncSession) -> list[Category]:
-    """Возвращает активные корневые категории (без родителя)."""
+async def get_root_categories(session: AsyncSession, include_inactive: bool = False) -> list[Category]:
+    """Возвращает корневые категории; обычный каталог показывает только активные."""
+    conditions = [Category.parent_id == None]
+    if not include_inactive:
+        conditions.append(Category.is_active == True)
     result = await session.execute(
         select(Category)
-        .where(Category.is_active == True, Category.parent_id == None)
+        .where(*conditions)
         .order_by(Category.sort_order, Category.name)
     )
     return result.scalars().all()
