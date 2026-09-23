@@ -102,12 +102,14 @@ async def create_product(
     description: str,
     price: Decimal,
     is_unlimited: bool = False,
+    image_url: str | None = None,
 ) -> Product:
     product = Product(
         category_id=category_id,
         name=name,
         description=description,
         price=price,
+        image_url=image_url,
         is_unlimited=is_unlimited,
     )
     session.add(product)
@@ -197,6 +199,26 @@ async def update_product_price(session: AsyncSession, product_id: int, price: De
     if not product:
         return False
     product.price = price
+    await session.commit()
+    return True
+
+
+async def update_product_description(session: AsyncSession, product_id: int, description: str) -> bool:
+    result = await session.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        return False
+    product.description = description
+    await session.commit()
+    return True
+
+
+async def update_product_image(session: AsyncSession, product_id: int, image_url: str | None) -> bool:
+    result = await session.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        return False
+    product.image_url = image_url or None
     await session.commit()
     return True
 

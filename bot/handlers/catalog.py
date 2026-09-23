@@ -110,9 +110,19 @@ async def _show_product(call: CallbackQuery, session: AsyncSession, product_id: 
     text = _product_text(product, stock, qty, user)
     kb = _product_kb(product_id, stock, qty, user)
     try:
-        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        if product.image_url:
+            if call.message.photo:
+                await call.message.edit_caption(caption=text, reply_markup=kb, parse_mode="HTML")
+            else:
+                await call.message.delete()
+                await call.message.answer_photo(product.image_url, caption=text, reply_markup=kb, parse_mode="HTML")
+        else:
+            await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     except Exception:
-        await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
+        if product.image_url:
+            await call.message.answer_photo(product.image_url, caption=text, reply_markup=kb, parse_mode="HTML")
+        else:
+            await call.message.answer(text, reply_markup=kb, parse_mode="HTML")
     return product, stock
 
 

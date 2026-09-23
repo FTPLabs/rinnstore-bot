@@ -106,11 +106,13 @@ def admin_catalog_product_detail_kb(product_id: int, is_active: bool, cat_id: in
     builder.row(
         InlineKeyboardButton(text=toggle_text, callback_data=f"admin_toggle_product_{product_id}"),
         InlineKeyboardButton(text=f"{plain(COINS)} Цена", callback_data=f"admin_change_price_{product_id}"),
+        InlineKeyboardButton(text="📝 Описание", callback_data=f"admin_edit_description_{product_id}"),
     )
     builder.row(
         InlineKeyboardButton(text=f"{plain(KEY)} Добавить ключи", callback_data=f"admin_add_keys_{product_id}"),
         InlineKeyboardButton(text=f"{plain(EDIT)} Ключи / Редактировать", callback_data=f"admin_keys_{product_id}"),
     )
+    builder.row(InlineKeyboardButton(text="🖼 Фото карточки", callback_data=f"admin_edit_image_{product_id}"))
     builder.row(
         InlineKeyboardButton(text=f"{plain(STATS)} Остатки", callback_data=f"admin_stock_{product_id}"),
         InlineKeyboardButton(text=f"{plain(TAG)} Скидка", callback_data=f"admin_set_discount_{product_id}"),
@@ -171,11 +173,13 @@ def admin_product_detail_kb(product_id: int, is_active: bool) -> InlineKeyboardM
     builder.row(
         InlineKeyboardButton(text=toggle_text, callback_data=f"admin_toggle_product_{product_id}"),
         InlineKeyboardButton(text=f"{plain(COINS)} Цена", callback_data=f"admin_change_price_{product_id}"),
+        InlineKeyboardButton(text="📝 Описание", callback_data=f"admin_edit_description_{product_id}"),
     )
     builder.row(
         InlineKeyboardButton(text=f"{plain(KEY)} Добавить ключи", callback_data=f"admin_add_keys_{product_id}"),
         InlineKeyboardButton(text=f"{plain(EDIT)} Ключи / Редактировать", callback_data=f"admin_keys_{product_id}"),
     )
+    builder.row(InlineKeyboardButton(text="🖼 Фото карточки", callback_data=f"admin_edit_image_{product_id}"))
     builder.row(
         InlineKeyboardButton(text=f"{plain(STATS)} Остатки", callback_data=f"admin_stock_{product_id}"),
         InlineKeyboardButton(text=f"{plain(TAG)} Скидка", callback_data=f"admin_set_discount_{product_id}"),

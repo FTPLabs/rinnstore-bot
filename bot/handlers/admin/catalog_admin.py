@@ -34,6 +34,8 @@ class CatalogState(StatesGroup):
     cat_name    = State()
     subcat_name = State()
     prod_name   = State()
+    prod_desc   = State()
+    prod_image  = State()
     prod_price  = State()
     prod_keys   = State()
     mass_import = State()
@@ -377,6 +379,24 @@ async def process_prod_name(message: Message, session: AsyncSession, user: User,
     if not (2 <= len(name) <= 255):
         return await message.answer(f"{FAIL} Название: 2–255 символов.", reply_markup=_cancel_kb(), parse_mode="HTML")
     await state.update_data(prod_name_val=name)
+    await state.set_state(CatalogState.prod_desc)
+    await message.answer("📝 Описание товара или <b>-</b>:", reply_markup=_cancel_kb(), parse_mode="HTML")
+
+
+@router.message(CatalogState.prod_desc)
+async def process_prod_desc(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    await state.update_data(prod_desc_val="" if (message.text or "").strip() == "-" else (message.text or "").strip())
+    await state.set_state(CatalogState.prod_image)
+    await message.answer("🖼 Фото товара или <b>-</b>:", reply_markup=_cancel_kb(), parse_mode="HTML")
+
+
+@router.message(CatalogState.prod_image)
+async def process_prod_image(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    await state.update_data(prod_image_val=message.photo[-1].file_id if message.photo else None)
     await state.set_state(CatalogState.prod_price)
     await message.answer(f"{COINS} Цена (₽):", reply_markup=_cancel_kb(), parse_mode="HTML")
 
@@ -415,8 +435,9 @@ async def process_prod_type(call: CallbackQuery, session: AsyncSession, user: Us
         session,
         category_id=data["prod_cat_id"],
         name=data["prod_name_val"],
-        description="",
+        description=data.get("prod_desc_val", ""),
         price=Decimal(data["prod_price_val"]),
+        image_url=data.get("prod_image_val"),
         is_unlimited=is_unlimited,
     )
     await log_action(session, user.id, "create_product", "product", product.id)

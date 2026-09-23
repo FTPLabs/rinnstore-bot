@@ -19,7 +19,8 @@ from ...services.admin_service import (
     get_subcategories_admin, get_all_categories,
     create_category, create_product, toggle_product,
     add_product_keys, get_stock_for_product, log_action,
-    delete_product, delete_category, update_product_price, set_product_discount
+    delete_product, delete_category, update_product_price, update_product_description,
+    update_product_image, set_product_discount
 )
 from ...utils.helpers import parse_callback_int
 from ...utils.emoji import (
@@ -36,6 +37,7 @@ class ProductStates(StatesGroup):
     waiting_product_category = State()
     waiting_product_name = State()
     waiting_product_desc = State()
+    waiting_product_image = State()
     waiting_product_price = State()
     waiting_product_unlimited = State()
     waiting_keys = State()
@@ -94,6 +96,7 @@ async def cb_admin_product_detail(call: CallbackQuery, session: AsyncSession, us
         f"{PIN} Статус: {status}\n"
         f"{OPEN_FOLDER} Тип: {kind}\n"
         f"{COINS} Цена: <b>{product.price} ₽</b>{disc_text}\n"
+        f"📝 Описание: <b>{'есть' if product.description else 'нет'}</b> | 🖼 Фото: <b>{'есть' if product.image_url else 'нет'}</b>\n"
         f"{'━' * 16}\n"
         f"{STATS} Всего: {stock['total']} | Доступно: {stock['available']} | Продано: {stock['sold']}"
     )
@@ -416,7 +419,42 @@ async def process_product_desc(message: Message, session: AsyncSession, user: Us
     if not await is_admin(session, user.id):
         return
     desc = "" if message.text.strip() == "-" else message.text.strip()
+    data = await state.get_data()
+    if data.get("edit_description_product_id"):
+        product_id = data["edit_description_product_id"]
+        await update_product_description(session, product_id, desc)
+        await state.clear()
+        await message.answer(f"{plain(OK)} Описание обновлено.")
+        return
     await state.update_data(product_desc=desc)
+    await state.set_state(ProductStates.waiting_product_image)
+    await message.answer(
+        "🖼 Отправьте фотографию товара для карточки или напишите <b>-</b>, чтобы пропустить:",
+        reply_markup=cancel_kb(), parse_mode="HTML",
+    )
+
+
+@router.message(ProductStates.waiting_product_image)
+async def process_product_image(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    data = await state.get_data()
+    if data.get("edit_image_product_id"):
+        image_id = message.photo[-1].file_id if message.photo else None if message.text and message.text.strip() == "-" else "invalid"
+        if image_id == "invalid":
+            await message.answer("Отправьте изображение или напишите <b>-</b>.", reply_markup=cancel_kb(), parse_mode="HTML")
+            return
+        await update_product_image(session, data["edit_image_product_id"], image_id)
+        await state.clear()
+        await message.answer(f"{plain(OK)} Фото карточки обновлено.")
+        return
+    if message.photo:
+        await state.update_data(product_image=message.photo[-1].file_id)
+    elif message.text and message.text.strip() == "-":
+        await state.update_data(product_image=None)
+    else:
+        await message.answer("Отправьте изображение или напишите <b>-</b>.", reply_markup=cancel_kb(), parse_mode="HTML")
+        return
     await state.set_state(ProductStates.waiting_product_price)
     await message.answer("💰 Введите цену товара (в рублях):", reply_markup=cancel_kb())
 
@@ -456,6 +494,7 @@ async def process_product_unlimited(call: CallbackQuery, session: AsyncSession, 
         name=data["product_name"],
         description=data.get("product_desc", ""),
         price=Decimal(data["product_price"]),
+        image_url=data.get("product_image"),
         is_unlimited=is_unlimited,
     )
     await log_action(session, user.id, "create_product", "product", product.id)
@@ -471,6 +510,42 @@ async def process_product_unlimited(call: CallbackQuery, session: AsyncSession, 
     )
     await call.answer()
 
+
+
+@router.callback_query(F.data.startswith("admin_edit_description_"))
+async def cb_edit_product_description(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
+    product_id = parse_callback_int(call.data, 3)
+    if product_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
+    result = await session.execute(select(Product).where(Product.id == product_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        return await call.answer("Товар не найден", show_alert=True)
+    await state.update_data(edit_description_product_id=product_id)
+    await state.set_state(ProductStates.waiting_product_desc)
+    await call.message.edit_text(
+        f"📝 <b>Описание: {product.name}</b>\n\nТекущее описание:\n{product.description or '—'}\n\nОтправьте новое описание или <b>-</b>, чтобы очистить:",
+        reply_markup=cancel_kb(), parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("admin_edit_image_"))
+async def cb_edit_product_image(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return await call.answer(f"{plain(BANNED)} Нет доступа", show_alert=True)
+    product_id = parse_callback_int(call.data, 3)
+    if product_id is None:
+        return await call.answer("Ошибка данных", show_alert=True)
+    await state.update_data(edit_image_product_id=product_id)
+    await state.set_state(ProductStates.waiting_product_image)
+    await call.message.edit_text(
+        "🖼 Отправьте новое фото товара или напишите <b>-</b>, чтобы удалить текущее фото:",
+        reply_markup=cancel_kb(), parse_mode="HTML",
+    )
+    await call.answer()
 
 # ─── CATEGORIES ──────────────────────────────────────────────────────
 
