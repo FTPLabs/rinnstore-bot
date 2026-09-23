@@ -1,6 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from decimal import Decimal
+from ..utils.custom_emoji import emoji_id
 from ..utils.emoji import (
     BAG, ORDERS, PROMO, PROFILE, SUPPORT, SETTINGS,
     BACK, BROADCAST, LOCK, OK, REFRESH,
