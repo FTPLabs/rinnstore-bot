@@ -17,6 +17,7 @@ from ..services.catalog_service import (
 from ..services.order_service import create_order
 from ..models import User
 from ..utils.helpers import parse_callback_int
+from ..utils.custom_emoji import emoji_id
 from ..utils.emoji import e
 from ..utils.i18n import t, localized_name, localized_description
 
@@ -69,7 +70,7 @@ def _product_kb(product_id: int, stock: int, qty: int = 1, user=None) -> object:
     builder = InlineKeyboardBuilder()
 
     if stock == 0:
-        builder.row(InlineKeyboardButton(text=t(user, "no_stock"), callback_data="noop", icon_custom_emoji_id="5893163582194978381", style="danger"))
+        builder.row(InlineKeyboardButton(text=t(user, "no_stock"), callback_data="noop", icon_custom_emoji_id=emoji_id("5893163582194978381"), style="danger"))
     else:
         max_qty = min(stock, MAX_QTY_BUTTONS) if stock < UNLIMITED_STOCK else MAX_QTY_BUTTONS
 
@@ -87,11 +88,11 @@ def _product_kb(product_id: int, stock: int, qty: int = 1, user=None) -> object:
         builder.row(InlineKeyboardButton(
             text=buy_text,
             callback_data=f"buy_{product_id}_{qty}",
-            icon_custom_emoji_id="5893311672667345793",
+            icon_custom_emoji_id=emoji_id("5893311672667345793"),
             style="danger",
         ))
 
-    builder.row(InlineKeyboardButton(text=t(user, "back"), callback_data=f"cat_back_{product_id}", icon_custom_emoji_id="5893311672667345793", style="primary"))
+    builder.row(InlineKeyboardButton(text=t(user, "back"), callback_data=f"cat_back_{product_id}", icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary"))
     return builder.as_markup()
 
 

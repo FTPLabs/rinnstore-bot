@@ -13,15 +13,15 @@ from ..utils.i18n import t, localized_name
 def main_menu_kb(is_admin: bool = False, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text=t(language, "catalog"), callback_data="catalog", icon_custom_emoji_id="5895440460322706085", style="primary"),
-        InlineKeyboardButton(text=t(language, "orders"), callback_data="my_orders", icon_custom_emoji_id="5893255507380014983", style="primary"),
+        InlineKeyboardButton(text=t(language, "catalog"), callback_data="catalog", icon_custom_emoji_id=emoji_id("5895440460322706085"), style="primary"),
+        InlineKeyboardButton(text=t(language, "orders"), callback_data="my_orders", icon_custom_emoji_id=emoji_id("5893255507380014983"), style="primary"),
     )
     builder.row(
-        InlineKeyboardButton(text=t(language, "promo"), callback_data="promo", icon_custom_emoji_id="5893365462837760511", style="primary"),
-        InlineKeyboardButton(text=t(language, "profile"), callback_data="profile", icon_custom_emoji_id="5902335789798265487", style="primary"),
+        InlineKeyboardButton(text=t(language, "promo"), callback_data="promo", icon_custom_emoji_id=emoji_id("5893365462837760511"), style="primary"),
+        InlineKeyboardButton(text=t(language, "profile"), callback_data="profile", icon_custom_emoji_id=emoji_id("5902335789798265487"), style="primary"),
     )
-    builder.row(InlineKeyboardButton(text=t(language, "support"), callback_data="support", icon_custom_emoji_id="5893297890117292323", style="danger"))
-    builder.row(InlineKeyboardButton(text=t(language, "language"), callback_data="language", icon_custom_emoji_id="5893365462837760511", style="primary"))
+    builder.row(InlineKeyboardButton(text=t(language, "support"), callback_data="support", icon_custom_emoji_id=emoji_id("5893297890117292323"), style="danger"))
+    builder.row(InlineKeyboardButton(text=t(language, "language"), callback_data="language", icon_custom_emoji_id=emoji_id("5893365462837760511"), style="primary"))
     if is_admin:
         builder.row(InlineKeyboardButton(text=f"{plain(SETTINGS)} {t(language, 'admin')}", callback_data="admin_main"))
     return builder.as_markup()
@@ -30,8 +30,8 @@ def main_menu_kb(is_admin: bool = False, language: str = "ru") -> InlineKeyboard
 def profile_kb(ref_code: str, bot_username: str, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     ref_link = f"https://t.me/{bot_username}?start={ref_code}"
-    builder.row(InlineKeyboardButton(text="My referral link" if language == "en" else "Моя реф. ссылка", url=ref_link, icon_custom_emoji_id="5902449142575141204", style="primary"))
-    builder.row(InlineKeyboardButton(text=f"{t(language, 'menu')}", callback_data="main_menu", icon_custom_emoji_id="5893311672667345793", style="primary"))
+    builder.row(InlineKeyboardButton(text="My referral link" if language == "en" else "Моя реф. ссылка", url=ref_link, icon_custom_emoji_id=emoji_id("5902449142575141204"), style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'menu')}", callback_data="main_menu", icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary"))
     return builder.as_markup()
 
 
@@ -80,33 +80,33 @@ def channel_kb(channel: str) -> InlineKeyboardMarkup:
 def catalog_kb(categories: list, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for cat in categories:
-        builder.row(InlineKeyboardButton(text=localized_name(cat, language), callback_data=f"cat_{cat.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
-    builder.row(InlineKeyboardButton(text=f"{t(language, 'in_stock')}", callback_data="in_stock", icon_custom_emoji_id="5893321843149902412", style="primary"))
-    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data="main_menu", icon_custom_emoji_id="5893311672667345793", style="primary"))
+        builder.row(InlineKeyboardButton(text=localized_name(cat, language), callback_data=f"cat_{cat.id}", icon_custom_emoji_id=emoji_id("5893382531037794941"), style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'in_stock')}", callback_data="in_stock", icon_custom_emoji_id=emoji_id("5893321843149902412"), style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data="main_menu", icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary"))
     return builder.as_markup()
 
 
 def subcatalog_kb(subcategories: list, back_cb: str = "catalog", language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for cat in subcategories:
-        builder.row(InlineKeyboardButton(text=localized_name(cat, language), callback_data=f"subcat_{cat.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
-    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data=back_cb, icon_custom_emoji_id="5893311672667345793", style="primary"))
+        builder.row(InlineKeyboardButton(text=localized_name(cat, language), callback_data=f"subcat_{cat.id}", icon_custom_emoji_id=emoji_id("5893382531037794941"), style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data=back_cb, icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary"))
     return builder.as_markup()
 
 
 def in_stock_categories_kb(categories: list, language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for category in categories:
-        builder.row(InlineKeyboardButton(text=localized_name(category, language), callback_data=f"stock_cat_{category.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
-    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data="catalog", icon_custom_emoji_id="5893311672667345793", style="primary"))
+        builder.row(InlineKeyboardButton(text=localized_name(category, language), callback_data=f"stock_cat_{category.id}", icon_custom_emoji_id=emoji_id("5893382531037794941"), style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data="catalog", icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary"))
     return builder.as_markup()
 
 
 def in_stock_subcategories_kb(categories: list, back_cb: str = "in_stock", language: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for category in categories:
-        builder.row(InlineKeyboardButton(text=localized_name(category, language), callback_data=f"stock_subcat_{category.id}", icon_custom_emoji_id="5893382531037794941", style="primary"))
-    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data=back_cb, icon_custom_emoji_id="5893311672667345793", style="primary"))
+        builder.row(InlineKeyboardButton(text=localized_name(category, language), callback_data=f"stock_subcat_{category.id}", icon_custom_emoji_id=emoji_id("5893382531037794941"), style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data=back_cb, icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary"))
     return builder.as_markup()
 
 
@@ -115,9 +115,9 @@ def products_kb(products: list, cat_id: int, parent_cat_id: int | None = None, s
     for product in products:
         stock = (stock_map or {}).get(product.id)
         stock_text = "∞" if stock is not None and stock >= 9999 else (str(stock) if stock is not None else "—")
-        builder.row(InlineKeyboardButton(text=f"{localized_name(product, language)} — {product.price} ₽ · {stock_text}", callback_data=f"prod_{product.id}", icon_custom_emoji_id="5893321843149902412", style="primary"))
+        builder.row(InlineKeyboardButton(text=f"{localized_name(product, language)} — {product.price} ₽ · {stock_text}", callback_data=f"prod_{product.id}", icon_custom_emoji_id=emoji_id("5893321843149902412"), style="primary"))
     back_cb = f"subcat_{parent_cat_id}" if parent_cat_id else "catalog"
-    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data=back_cb, icon_custom_emoji_id="5893311672667345793", style="primary"))
+    builder.row(InlineKeyboardButton(text=f"{t(language, 'back')}", callback_data=back_cb, icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary"))
     return builder.as_markup()
 
 
@@ -130,16 +130,16 @@ def payment_method_kb(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(
-        text="Pay with Stars" if language == "en" else "Оплатить Stars", icon_custom_emoji_id="5893494861612455015", style="primary",
+        text="Pay with Stars" if language == "en" else "Оплатить Stars", icon_custom_emoji_id=emoji_id("5893494861612455015"), style="primary",
         callback_data=f"pay_stars_{order_id}",
     ))
     builder.row(InlineKeyboardButton(
-        text="CryptoBot (USDT)", icon_custom_emoji_id="6039802097916974085", style="primary",
+        text="CryptoBot (USDT)", icon_custom_emoji_id=emoji_id("6039802097916974085"), style="primary",
         callback_data=f"pay_crypto_{order_id}",
     ))
     if rollypay_enabled:
         builder.row(InlineKeyboardButton(
-            text="SBP / RollyPay (RUB)" if language == "en" else "СБП / RollyPay (RUB)", icon_custom_emoji_id="5902056028513505203", style="primary",
+            text="SBP / RollyPay (RUB)" if language == "en" else "СБП / RollyPay (RUB)", icon_custom_emoji_id=emoji_id("5902056028513505203"), style="primary",
             callback_data=f"pay_rollypay_{order_id}",
         ))
     if freekassa_enabled:
@@ -149,11 +149,11 @@ def payment_method_kb(
         ))
     if user_balance is not None and user_balance > Decimal("0"):
         builder.row(InlineKeyboardButton(
-            text=f"Баланс ({user_balance:.2f} ₽)", icon_custom_emoji_id="6039641775377748623", style="primary",
+            text=f"Баланс ({user_balance:.2f} ₽)", icon_custom_emoji_id=emoji_id("6039641775377748623"), style="primary",
             callback_data=f"pay_balance_{order_id}",
         ))
     builder.row(InlineKeyboardButton(
-        text=f"{t(language, 'cancel')}", icon_custom_emoji_id="5893163582194978381", style="danger",
+        text=f"{t(language, 'cancel')}", icon_custom_emoji_id=emoji_id("5893163582194978381"), style="danger",
         callback_data=f"cancel_order_{order_id}",
     ))
     return builder.as_markup()

@@ -8,6 +8,7 @@ from ...models import Review, Order, User
 from ...services.admin_service import is_admin, log_action
 from ...services.review_service import format_review_text, BUY_URL
 from ...services.settings_service import get_cached
+from ...utils.custom_emoji import emoji_id
 from ...utils.emoji import OK, FAIL
 
 router = Router()
@@ -15,7 +16,7 @@ router = Router()
 
 def buy_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Купить свой ключ", url=BUY_URL, icon_custom_emoji_id="5893382531037794941", style="primary")
+        InlineKeyboardButton(text="Купить свой ключ", url=BUY_URL, icon_custom_emoji_id=emoji_id("5893382531037794941"), style="primary")
     ]])
 
 

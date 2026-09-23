@@ -10,11 +10,12 @@ from ..models import Review, Order, User, Admin
 from ..services.settings_service import get_cached
 from ..keyboards.review import moderation_kb, rating_kb
 from ..utils.i18n import t
+from ..utils.custom_emoji_service import emoji_html
 
 logger = logging.getLogger(__name__)
 BUY_URL = "https://t.me/rinnnstore_bot?start=catalog"
-KEY_EMOJI = '<tg-emoji emoji-id="5895713431264170680">✅</tg-emoji>'
-STAR_EMOJI = '<tg-emoji emoji-id="5893494861612455015">⭐</tg-emoji>'
+KEY_EMOJI = emoji_html("5895713431264170680", "✅")
+STAR_EMOJI = emoji_html("5893494861612455015", "⭐")
 
 
 def _int_setting(key: str, default: int) -> int:

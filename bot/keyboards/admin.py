@@ -1,5 +1,6 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton as TelegramInlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from ..utils.custom_emoji import emoji_id
 from ..utils.emoji import (
     BAG, CATEGORY, ORDERS, USERS, STATS, PROMO,
     BROADCAST, SETTINGS, ADD, EDIT, DELETE, OK, FAIL,

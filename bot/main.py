@@ -23,6 +23,7 @@ from .handlers.admin import reviews_admin
 from .database import AsyncSessionFactory
 from .models import Admin, User
 from .services.settings_service import load_all_settings
+from .services.custom_emoji_service import seed_custom_emojis, load_custom_emojis
 from .utils.backup import backup_scheduler
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -123,6 +124,9 @@ async def main():
 
     async with AsyncSessionFactory() as session:
         await load_all_settings(session)
+        added_emojis = await seed_custom_emojis(session)
+        await load_custom_emojis(session)
+        logger.info("ProtectStatus emoji catalog loaded (%s new records)", added_emojis)
         logger.info("Настройки загружены из БД")
 
     aiohttp_app = web.Application()

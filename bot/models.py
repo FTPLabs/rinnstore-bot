@@ -226,6 +226,16 @@ class Setting(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class CustomEmoji(Base):
+    __tablename__ = "custom_emojis"
+
+    custom_emoji_id = Column(String(64), primary_key=True)
+    pack_name = Column(String(128), nullable=False, default="ProtectStatus")
+    emoji = Column(String(32), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class Review(Base):
     __tablename__ = "reviews"
     __table_args__ = (

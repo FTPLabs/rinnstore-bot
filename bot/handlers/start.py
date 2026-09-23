@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from ..models import User, Admin
 from ..keyboards.user import main_menu_kb, back_to_menu_kb, profile_kb
+from ..utils.custom_emoji import emoji_id
 from ..utils.i18n import t
 from ..services.settings_service import get_setting
 from ..services.user_service import get_referral_count, get_or_create_user
@@ -90,7 +91,7 @@ async def cb_language(call: CallbackQuery, user: User):
     from aiogram.types import InlineKeyboardButton
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="Русский", callback_data="set_language_ru", style="primary"), InlineKeyboardButton(text="English", callback_data="set_language_en", style="primary"))
-    builder.row(InlineKeyboardButton(text=t(user, "back"), callback_data="main_menu", icon_custom_emoji_id="5893311672667345793", style="primary"))
+    builder.row(InlineKeyboardButton(text=t(user, "back"), callback_data="main_menu", icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary"))
     await call.message.edit_text(t(user, "choose_language"), reply_markup=builder.as_markup())
     await call.answer()
 
