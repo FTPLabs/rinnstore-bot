@@ -138,6 +138,54 @@ async def _category_has_stock(session: AsyncSession, category_id: int, visited: 
     return False
 
 
+async def _show_stock_category(
+    call: CallbackQuery,
+    session: AsyncSession,
+    user: User,
+    category_id: int,
+    back_cb: str,
+) -> None:
+    """Render only stocked descendants or direct stocked products."""
+    category = await get_category(session, category_id)
+    if not category or not await _category_has_stock(session, category_id):
+        await call.answer("В этой категории доступных товаров нет", show_alert=True)
+        return
+
+    available_subcategories = [
+        child for child in await get_subcategories(session, category_id)
+        if await _category_has_stock(session, child.id)
+    ]
+    direct_products = []
+    for product in await get_products_in_category(session, category_id):
+        if await get_stock_count(session, product.id) > 0:
+            direct_products.append(product)
+
+    if available_subcategories:
+        await call.message.edit_text(
+            f"<b>{localized_name(category, user)}</b>\n\nВыберите подкатегорию:",
+            reply_markup=in_stock_subcategories_kb(
+                available_subcategories,
+                back_cb=back_cb,
+                language=user.language_code,
+            ),
+            parse_mode="HTML",
+        )
+    elif direct_products:
+        stock_map = {p.id: await get_stock_count(session, p.id) for p in direct_products}
+        await call.message.edit_text(
+            f"<b>{localized_name(category, user)}</b>\n\nВыберите товар:",
+            reply_markup=products_kb(
+                direct_products,
+                category_id,
+                parent_cat_id=category.parent_id,
+                stock_map=stock_map,
+                language=user.language_code,
+            ),
+            parse_mode="HTML",
+        )
+    await call.answer()
+
+
 @router.callback_query(F.data == "noop")
 async def cb_noop(call: CallbackQuery):
     await call.answer()
@@ -184,57 +232,15 @@ async def cb_in_stock(call: CallbackQuery, session: AsyncSession, user: User):
 @router.callback_query(F.data.regexp(r"^stock_cat_\d+$"))
 async def cb_stock_category(call: CallbackQuery, session: AsyncSession, user: User):
     category_id = int(call.data.rsplit("_", 1)[1])
-    category = await get_category(session, category_id)
-    if not category or not await _category_has_stock(session, category_id):
-        await call.answer("Категория недоступна", show_alert=True)
-        return
-    subcategories = await get_subcategories(session, category_id)
-    available_subcategories = []
-    for subcategory in subcategories:
-        if await _category_has_stock(session, subcategory.id):
-            available_subcategories.append(subcategory)
-    direct_products = await get_products_in_category(session, category_id)
-    direct_available_products = []
-    for product in direct_products:
-        if await get_stock_count(session, product.id) > 0:
-            direct_available_products.append(product)
-    direct_products = direct_available_products
-    if available_subcategories:
-        await call.message.edit_text(
-            f"<b>{localized_name(category, user)}</b>\n\nВыберите подкатегорию:",
-            reply_markup=in_stock_subcategories_kb(available_subcategories, language=user.language_code), parse_mode="HTML",
-        )
-    elif direct_products:
-        stock_map = {p.id: await get_stock_count(session, p.id) for p in direct_products}
-        await call.message.edit_text(
-            f"<b>{localized_name(category, user)}</b>\n\nВыберите товар:",
-            reply_markup=products_kb(direct_products, category_id, stock_map=stock_map, language=user.language_code), parse_mode="HTML",
-        )
-    else:
-        await call.answer("В этой категории доступных товаров нет", show_alert=True)
-        return
-    await call.answer()
+    await _show_stock_category(call, session, user, category_id, back_cb="in_stock")
 
 
 @router.callback_query(F.data.regexp(r"^stock_subcat_\d+$"))
 async def cb_stock_subcategory(call: CallbackQuery, session: AsyncSession, user: User):
     category_id = int(call.data.rsplit("_", 1)[1])
     category = await get_category(session, category_id)
-    products = await get_products_in_category(session, category_id)
-    available = []
-    for product in products:
-        if await get_stock_count(session, product.id) > 0:
-            available.append(product)
-    if not category or not available:
-        await call.answer("В подкатегории нет доступных товаров", show_alert=True)
-        return
-    stock_map = {p.id: await get_stock_count(session, p.id) for p in available}
-    await call.message.edit_text(
-        f"<b>{localized_name(category, user)}</b>\n\nВыберите товар:",
-        reply_markup=products_kb(available, category_id, parent_cat_id=category.parent_id, stock_map=stock_map, language=user.language_code),
-        parse_mode="HTML",
-    )
-    await call.answer()
+    back_cb = f"stock_cat_{category.parent_id}" if category and category.parent_id else "in_stock"
+    await _show_stock_category(call, session, user, category_id, back_cb=back_cb)
 
 
 @router.callback_query(F.data.regexp(r"^cat_\d+$"))
