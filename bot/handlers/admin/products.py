@@ -101,7 +101,7 @@ async def cb_admin_product_detail(call: CallbackQuery, session: AsyncSession, us
         f"{PIN} Статус: {status}\n"
         f"{OPEN_FOLDER} Тип: {kind}\n"
         f"{COINS} Цена: <b>{product.price} ₽</b>{disc_text}\n"
-        f"📝 Описание: <b>{'есть' if product.description else 'нет'}</b> | 🖼 Фото: <b>{'есть' if product.image_url else 'нет'}</b>\n"
+        f"{EDIT} Описание: <b>{'есть' if product.description else 'нет'}</b> | 🖼 Фото: <b>{'есть' if product.image_url else 'нет'}</b>\n"
         f"{'━' * 16}\n"
         f"{STATS} Всего: {stock['total']} | Доступно: {stock['available']} | Продано: {stock['sold']}"
     )
@@ -532,7 +532,7 @@ async def cb_edit_product_description(call: CallbackQuery, session: AsyncSession
     await state.update_data(edit_description_product_id=product_id)
     await state.set_state(ProductStates.waiting_product_desc)
     await call.message.edit_text(
-        f"📝 <b>Описание: {product.name}</b>\n\nТекущее описание:\n{current_description}\n\nОтправьте новое описание или <b>-</b>, чтобы очистить:",
+        f"{EDIT} <b>Описание: {product.name}</b>\n\nТекущее описание:\n{current_description}\n\nОтправьте новое описание или <b>-</b>, чтобы очистить:",
         reply_markup=cancel_kb(), parse_mode="HTML",
     )
     await call.answer()
