@@ -100,9 +100,9 @@ async def show_settings(call: CallbackQuery, session: AsyncSession):
     rp_key = all_s.get("rollypay_api_key", "")
     rp_display = f"{rp_key[:8]}..." if len(rp_key) > 8 else (plain(OK) if rp_key else plain(FAIL))
     fk_ready = bool(
-        all_s.get("freekassa_shop_id", "")
-        and all_s.get("freekassa_api_key", "")
-        and all_s.get("freekassa_payer_ip", "")
+        (all_s.get("freekassa_shop_id") or env_settings.freekassa_shop_id)
+        and (all_s.get("freekassa_api_key") or env_settings.freekassa_api_key)
+        and (all_s.get("freekassa_payer_ip") or env_settings.freekassa_payer_ip)
     )
 
     channel = all_s.get("required_channel", "") or "не задан"
