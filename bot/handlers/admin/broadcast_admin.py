@@ -65,7 +65,7 @@ async def process_broadcast_text(message: Message, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text=f"{plain(OK)} Отправить всем", callback_data="confirm_broadcast"),
-        InlineKeyboardButton(text=f"{plain(FAIL)} Отмена", callback_data="admin_main"),
+        InlineKeyboardButton(text=f"{plain(FAIL)} Отмена", callback_data="admin_main", style="danger"),
     )
     preview = text[:300] + ("..." if len(text) > 300 else "")
     await message.answer(

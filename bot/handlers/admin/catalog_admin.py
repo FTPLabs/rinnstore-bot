@@ -58,7 +58,7 @@ class CatalogState(StatesGroup):
 
 def _cancel_kb(back_cb: str = CANCEL_CB) -> object:
     b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(text="✕ Отмена", callback_data=back_cb))
+    b.row(InlineKeyboardButton(text="✕ Отмена", callback_data=back_cb, style="danger"))
     return b.as_markup()
 
 
@@ -66,7 +66,7 @@ def _skip_cancel_kb(skip_cb: str, back_cb: str = CANCEL_CB) -> object:
     b = InlineKeyboardBuilder()
     b.row(
         InlineKeyboardButton(text="⏭ Пропустить", callback_data=skip_cb),
-        InlineKeyboardButton(text="✕ Отмена", callback_data=back_cb),
+        InlineKeyboardButton(text="✕ Отмена", callback_data=back_cb, style="danger"),
     )
     return b.as_markup()
 
@@ -112,7 +112,7 @@ def _pick_parent_kb(root_cats: list) -> object:
     b = InlineKeyboardBuilder()
     for cat in root_cats:
         b.row(InlineKeyboardButton(text=f"{plain(OPEN_FOLDER)} {cat.name}", callback_data=f"cat_sub_parent_{cat.id}"))
-    b.row(InlineKeyboardButton(text="✕ Отмена", callback_data=CANCEL_CB))
+    b.row(InlineKeyboardButton(text="✕ Отмена", callback_data=CANCEL_CB, style="danger"))
     return b.as_markup()
 
 
@@ -138,7 +138,7 @@ def _prod_type_kb(cat_id: int) -> object:
         InlineKeyboardButton(text=f"{plain(BAG)} Обычный", callback_data="cat_prod_type_normal"),
         InlineKeyboardButton(text=f"{plain(INFINITY)} Безлимитный", callback_data="cat_prod_type_unlimited"),
     )
-    b.row(InlineKeyboardButton(text="✕ Отмена", callback_data=f"cat_view_{cat_id}"))
+    b.row(InlineKeyboardButton(text="✕ Отмена", callback_data=f"cat_view_{cat_id}", style="danger"))
     return b.as_markup()
 
 

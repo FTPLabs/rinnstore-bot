@@ -115,7 +115,7 @@ async def process_promo_code_admin(message: Message, state: FSMContext, session:
         InlineKeyboardButton(text="% Процент", callback_data="apromo_type_percent"),
         InlineKeyboardButton(text="₽ Фиксированная", callback_data="apromo_type_fixed"),
     )
-    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_cancel_state"))
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_cancel_state", style="danger"))
     await message.answer(
         f"{PROMO} Выберите тип скидки:",
         reply_markup=builder.as_markup(),
@@ -153,7 +153,7 @@ async def process_promo_value(message: Message, state: FSMContext):
     await state.set_state(AdminPromoStates.waiting_max_uses)
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=f"{plain(INFINITY)} Безлимит", callback_data="apromo_unlimited"))
-    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_cancel_state"))
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_cancel_state", style="danger"))
     await message.answer(
         f"{ADD} Максимум использований (введите число или нажмите «Безлимит»):",
         reply_markup=builder.as_markup(),

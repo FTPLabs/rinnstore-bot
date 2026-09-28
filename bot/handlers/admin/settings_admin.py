@@ -132,7 +132,7 @@ async def cb_settings(call: CallbackQuery, session: AsyncSession, user: User):
 
 def _cancel_kb(back_cb: str = "admin_settings"):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data=back_cb))
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data=back_cb, style="danger"))
     return builder.as_markup()
 
 

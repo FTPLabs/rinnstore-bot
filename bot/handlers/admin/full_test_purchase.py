@@ -30,7 +30,7 @@ TEST_NOTE = "admin_full_test_purchase_fake_product"
 
 def _cancel_kb() -> object:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="✕ Закрыть", callback_data="admin_main"))
+    builder.row(InlineKeyboardButton(text="✕ Закрыть", callback_data="admin_main", style="danger"))
     return builder.as_markup()
 
 

@@ -11,7 +11,11 @@ from ..utils.emoji import (
 from ..utils.i18n import t, localized_name
 
 
-def main_menu_kb(is_admin: bool = False, language: str = "ru") -> InlineKeyboardMarkup:
+def main_menu_kb(
+    is_admin: bool = False,
+    language: str = "ru",
+    support_url: str = "https://t.me/rinnn12333",
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text=t(language, "catalog"), callback_data="catalog", icon_custom_emoji_id=emoji_id("5895440460322706085"), style="primary"),
@@ -21,10 +25,10 @@ def main_menu_kb(is_admin: bool = False, language: str = "ru") -> InlineKeyboard
         InlineKeyboardButton(text=t(language, "promo"), callback_data="promo", icon_custom_emoji_id=emoji_id("5893365462837760511"), style="primary"),
         InlineKeyboardButton(text=t(language, "profile"), callback_data="profile", icon_custom_emoji_id=emoji_id("5902335789798265487"), style="primary"),
     )
-    builder.row(InlineKeyboardButton(text=t(language, "support"), callback_data="support", icon_custom_emoji_id=emoji_id("5893297890117292323"), style="danger"))
+    builder.row(InlineKeyboardButton(text=t(language, "support"), url=support_url, icon_custom_emoji_id=emoji_id("5893297890117292323"), style="danger"))
     builder.row(InlineKeyboardButton(text=t(language, "language"), callback_data="language", icon_custom_emoji_id=emoji_id("5893365462837760511"), style="primary"))
     if is_admin:
-        builder.row(InlineKeyboardButton(text=f"{plain(SETTINGS)} {t(language, 'admin')}", callback_data="admin_main"))
+        builder.row(InlineKeyboardButton(text=f"{plain(SETTINGS)} {t(language, 'admin')}", callback_data="admin_main", icon_custom_emoji_id=emoji_id("5893163582194978381"), style="danger"))
     return builder.as_markup()
 
 

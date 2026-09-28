@@ -134,7 +134,7 @@ def catalog_skip_kb(skip_cb: str, cancel_cb: str = "admin_main") -> InlineKeyboa
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text=f"{plain(NEXT)} Пропустить", callback_data=skip_cb),
-        InlineKeyboardButton(text="✕ Отмена", callback_data=cancel_cb),
+        InlineKeyboardButton(text="✕ Отмена", callback_data=cancel_cb, style="danger"),
     )
     return builder.as_markup()
 
@@ -145,7 +145,7 @@ def catalog_type_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=f"{plain(BAG)} Обычный (конечный запас)", callback_data="cat_prod_type_normal"),
         InlineKeyboardButton(text=f"{plain(INFINITY)} Безлимитный", callback_data="cat_prod_type_unlimited"),
     )
-    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_main"))
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_main", style="danger"))
     return builder.as_markup()
 
 
@@ -254,7 +254,7 @@ def admin_confirm_key_del_kb(key_id: int, product_id: int) -> InlineKeyboardMark
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text=f"{plain(OK)} Да, удалить", callback_data=f"confirm_key_del_{key_id}"),
-        InlineKeyboardButton(text="✕ Отмена", callback_data=f"admin_key_{key_id}"),
+        InlineKeyboardButton(text="✕ Отмена", callback_data=f"admin_key_{key_id}", style="danger"),
     )
     return builder.as_markup()
 
@@ -458,7 +458,7 @@ def admin_promo_detail_kb(promo_id: int, is_active: bool) -> InlineKeyboardMarku
 
 def cancel_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_main"))
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_main", style="danger"))
     return builder.as_markup()
 
 
@@ -466,7 +466,7 @@ def admin_confirm_kb(action: str, entity_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text=f"{plain(OK)} Да, удалить", callback_data=f"confirm_{action}_{entity_id}"),
-        InlineKeyboardButton(text="✕ Отмена", callback_data="admin_main"),
+        InlineKeyboardButton(text="✕ Отмена", callback_data="admin_main", style="danger"),
     )
     return builder.as_markup()
 
@@ -479,5 +479,5 @@ def admin_select_category_kb(categories: list, action_prefix: str) -> InlineKeyb
             text=f"{icon} {cat.name}",
             callback_data=f"{action_prefix}{cat.id}"
         ))
-    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_catalog"))
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="admin_catalog", style="danger"))
     return builder.as_markup()

@@ -21,7 +21,7 @@ class UserPromoStates(StatesGroup):
 async def cb_promo(call: CallbackQuery, state: FSMContext):
     await state.set_state(UserPromoStates.waiting_code)
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="main_menu"))
+    builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data="main_menu", style="danger"))
     await call.message.edit_text("Введите промокод:", reply_markup=builder.as_markup())
     await call.answer()
 

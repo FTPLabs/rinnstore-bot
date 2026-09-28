@@ -19,6 +19,11 @@ router = Router()
 CHANNEL_INVITE = "https://t.me/+JCN4dIhS-MhhZjAy"
 
 
+def _support_url(configured: str) -> str:
+    value = configured.strip()
+    return value if value.startswith(("http://", "https://", "tg://")) else f"https://t.me/{value.lstrip('@')}"
+
+
 class OnboardingState(StatesGroup):
     captcha = State()
 
@@ -109,8 +114,9 @@ async def start_onboarding(
 
     # ── Всё OK → главное меню ───────────────────────────────────────
     is_adm = await _is_admin(session, user.id)
+    support_url = _support_url(await get_setting(session, "support_username") or "support")
     text = _welcome_text(shop_name, user)
-    kb = main_menu_kb(is_admin=is_adm, language=user.language_code)
+    kb = main_menu_kb(is_admin=is_adm, language=user.language_code, support_url=support_url)
     try:
         if is_call:
             await msg.edit_text(text, reply_markup=kb)
@@ -171,14 +177,16 @@ async def cb_check_channel(
         shop_name = await get_setting(session, "shop_name")
         is_adm = await _is_admin(session, user.id)
         try:
+            support_url = _support_url(await get_setting(session, "support_username") or "support")
             await call.message.edit_text(
                 _welcome_text(shop_name, user),
-                reply_markup=main_menu_kb(is_admin=is_adm, language=user.language_code),
+                reply_markup=main_menu_kb(is_admin=is_adm, language=user.language_code, support_url=support_url),
             )
         except Exception:
+            support_url = _support_url(await get_setting(session, "support_username") or "support")
             await call.message.answer(
                 _welcome_text(shop_name, user),
-                reply_markup=main_menu_kb(is_admin=is_adm, language=user.language_code),
+                reply_markup=main_menu_kb(is_admin=is_adm, language=user.language_code, support_url=support_url),
             )
     else:
         await call.answer("Вы ещё не подписались на канал.", show_alert=True)
@@ -209,9 +217,10 @@ async def handle_captcha_answer(
 
         shop_name = await get_setting(session, "shop_name")
         is_adm = await _is_admin(session, user.id)
+        support_url = _support_url(await get_setting(session, "support_username") or "support")
         await message.answer(
             _welcome_text(shop_name, user),
-            reply_markup=main_menu_kb(is_admin=is_adm, language=user.language_code),
+            reply_markup=main_menu_kb(is_admin=is_adm, language=user.language_code, support_url=support_url),
         )
     else:
         await state.clear()
