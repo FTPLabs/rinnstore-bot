@@ -29,7 +29,7 @@ class OnboardingState(StatesGroup):
 
 
 def _welcome_text(shop_name: str, user=None) -> str:
-    return f"<b>{shop_name}</b>\n{t(user or 'ru', 'welcome_subtitle')}"
+    return f"<b>{shop_name}</b>"
 
 
 async def _is_admin(session: AsyncSession, user_id: int) -> bool:
