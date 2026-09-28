@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from bot.handlers.admin.test_payment_admin import TEST_AMOUNT, TEST_NOTE, _payment_kb
+from bot.handlers.start import _support_url
 from bot.keyboards.admin import admin_main_kb
 
 
@@ -28,3 +29,7 @@ def test_test_payment_keyboard_uses_admin_check_callback() -> None:
     ]
     assert "admin_test_check_42" in callbacks
     assert "check_payment_42_freekassa" not in callbacks
+
+
+def test_support_username_opens_direct_telegram_chat() -> None:
+    assert _support_url("@rinnn12333") == "https://t.me/rinnn12333"

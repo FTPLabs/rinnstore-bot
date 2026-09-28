@@ -11,7 +11,7 @@ _DEFAULTS = {
     "freekassa_secret_word_1": "",
     "freekassa_secret_word_2": "",
     "webhook_host": "",
-    "support_username": "support",
+    "support_username": "rinnn12333",
     "required_channel": "",
     "shop_name": "RINN STORE",
     "backup_interval": "6",

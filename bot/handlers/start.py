@@ -25,6 +25,11 @@ router = Router()
 _bot_username_cache: str | None = None
 
 
+def _support_url(configured: str) -> str:
+    value = configured.strip()
+    return value if value.startswith(("http://", "https://", "tg://")) else f"https://t.me/{value.lstrip('@')}"
+
+
 async def get_bot_username(bot: Bot) -> str:
     global _bot_username_cache
     if not _bot_username_cache:
@@ -153,7 +158,7 @@ async def cb_profile(call: CallbackQuery, user: User, session: AsyncSession, bot
 @router.callback_query(F.data == "support")
 async def cb_support(call: CallbackQuery, session: AsyncSession, user: User):
     configured = (await get_setting(session, "support_username") or "support").strip()
-    support_url = configured if configured.startswith(("http://", "https://", "tg://")) else f"https://t.me/{configured.lstrip('@')}"
+    support_url = _support_url(configured)
     display_name = configured.lstrip("@").replace("https://t.me/", "").strip("/")
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(
