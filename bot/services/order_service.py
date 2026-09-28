@@ -258,7 +258,23 @@ async def deliver_order(session: AsyncSession, order_id: int) -> list[dict]:
                 )
                 logger.info(f"Referral bonus {bonus} credited to user {buyer.referred_by}")
 
-    if not out_of_stock:
-        await create_review_if_missing(session, order)
     await session.commit()
     return delivered_list
+
+
+async def create_review_after_delivery_notification(session: AsyncSession, order_id: int) -> bool:
+    """Schedule a review only after Telegram confirmed the key message was sent.
+
+    Fulfilment is committed before a Telegram API call.  If that call fails, the
+    buyer can recover the key from "My orders", but must not receive a review
+    prompt that suggests the key was received.
+    """
+    result = await session.execute(
+        select(Order).where(Order.id == order_id).with_for_update()
+    )
+    order = result.scalar_one_or_none()
+    if not order or order.status != "delivered":
+        return False
+    await create_review_if_missing(session, order)
+    await session.commit()
+    return True

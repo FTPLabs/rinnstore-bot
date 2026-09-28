@@ -3,7 +3,11 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import User
 from ..keyboards.user import orders_kb, order_detail_kb, back_to_menu_kb
-from ..services.order_service import get_user_orders, get_order, deliver_order
+from ..services.order_service import (
+    get_user_orders, get_order, deliver_order,
+    create_review_after_delivery_notification,
+)
+from ..utils.delivery import format_delivered_items
 from ..utils.helpers import parse_callback_int
 from ..utils.emoji import KEY, OK, FAIL, WARN, CLOCK, plain
 from ..utils.i18n import t
@@ -82,12 +86,13 @@ async def cb_get_items(call: CallbackQuery, session: AsyncSession, user: User):
     if not delivered:
         await call.answer(t(user, "data_delivery_error"), show_alert=True)
         return
-    items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+    items_text = format_delivered_items(delivered)
     await call.message.edit_text(
         f"{OK} <b>{t(user, 'delivered_items')} #{order_id}</b>\n\n{items_text}",
         reply_markup=back_to_menu_kb(user.language_code),
         parse_mode="HTML",
     )
+    await create_review_after_delivery_notification(session, order_id)
     await call.answer()
 
 

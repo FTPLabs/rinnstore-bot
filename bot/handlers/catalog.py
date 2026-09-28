@@ -11,7 +11,7 @@ from ..keyboards.user import (
 )
 from ..services.catalog_service import (
     get_root_categories, get_subcategories, get_category,
-    get_products_in_category, get_all_active_products, get_product,
+    get_products_in_category, get_product,
     get_stock_count, get_product_category_id, UNLIMITED_STOCK
 )
 from ..services.order_service import create_order
@@ -20,6 +20,8 @@ from ..utils.helpers import parse_callback_int
 from ..utils.custom_emoji import emoji_id
 from ..utils.emoji import e
 from ..utils.i18n import t, localized_name, localized_description
+from ..utils.product_description import product_description_to_html
+from ..services.freekassa_service import is_freekassa_api_enabled
 
 router = Router()
 
@@ -52,8 +54,8 @@ def _product_text(product, stock: int, qty: int = 1, user=None) -> str:
         price_line = f"<b>{t(user, 'price')}: {product.price} ₽</b>"
         unit_price = product.price
 
-    description = localized_description(product, user)
-    desc = f"\n<b>{description}</b>\n" if description else "\n"
+    description = product_description_to_html(localized_description(product, user))
+    desc = f"\n{description}\n" if description else "\n"
     total_line = ""
     if qty > 1:
         total_line = f"\n<b>{t(user, 'total')} ({qty}): {unit_price * qty:.2f} ₽</b>"
@@ -88,11 +90,11 @@ def _product_kb(product_id: int, stock: int, qty: int = 1, user=None) -> object:
         builder.row(InlineKeyboardButton(
             text=buy_text,
             callback_data=f"buy_{product_id}_{qty}",
-            icon_custom_emoji_id=emoji_id("5893311672667345793"),
-            style="danger",
+            icon_custom_emoji_id=emoji_id("5893473283696759404"),
+            style="primary",
         ))
 
-    builder.row(InlineKeyboardButton(text=t(user, "back"), callback_data=f"cat_back_{product_id}", icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary"))
+    builder.row(InlineKeyboardButton(text=t(user, "back"), callback_data=f"cat_back_{product_id}", icon_custom_emoji_id=emoji_id("5893333516871012690"), style="primary"))
     return builder.as_markup()
 
 
@@ -434,11 +436,7 @@ async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User):
 
     cart_items = [{"product_id": product_id, "qty": qty, "price": unit_price}]
     order = await create_order(session, user.id, cart_items)
-    from ..services.settings_service import get_cached
-    freekassa_enabled = bool(
-        (get_cached("freekassa_shop_id") or "").strip()
-        and (get_cached("freekassa_secret_word_1") or "").strip()
-    )
+    freekassa_enabled = is_freekassa_api_enabled()
 
     await call.message.edit_text(
         f"{e('5893311672667345793', '🔑')} <b>ЗАКАЗ #{order.id} СОЗДАН</b>\n\n"

@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone, timedelta
+import html
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -26,6 +27,10 @@ from ...utils.helpers import parse_callback_int
 from ...utils.emoji import (
     BAG, KEY, OK, FAIL, ADD, EDIT, STATS, BACK, CATALOG, TAG,
     COINS, OPEN_FOLDER, PIN, INFINITY, TIMER, WARN, BANNED, plain
+)
+from ...utils.product_description import (
+    product_description_from_message,
+    product_description_to_html,
 )
 
 router = Router()
@@ -418,7 +423,7 @@ async def process_product_name(message: Message, session: AsyncSession, user: Us
 async def process_product_desc(message: Message, session: AsyncSession, user: User, state: FSMContext):
     if not await is_admin(session, user.id):
         return
-    desc = "" if message.text.strip() == "-" else message.text.strip()
+    desc = product_description_from_message(message)
     data = await state.get_data()
     if data.get("edit_description_product_id"):
         product_id = data["edit_description_product_id"]
@@ -523,10 +528,11 @@ async def cb_edit_product_description(call: CallbackQuery, session: AsyncSession
     product = result.scalar_one_or_none()
     if not product:
         return await call.answer("Товар не найден", show_alert=True)
+    current_description = product_description_to_html(product.description) or "—"
     await state.update_data(edit_description_product_id=product_id)
     await state.set_state(ProductStates.waiting_product_desc)
     await call.message.edit_text(
-        f"📝 <b>Описание: {product.name}</b>\n\nТекущее описание:\n{product.description or '—'}\n\nОтправьте новое описание или <b>-</b>, чтобы очистить:",
+        f"📝 <b>Описание: {product.name}</b>\n\nТекущее описание:\n{current_description}\n\nОтправьте новое описание или <b>-</b>, чтобы очистить:",
         reply_markup=cancel_kb(), parse_mode="HTML",
     )
     await call.answer()
@@ -928,7 +934,6 @@ async def process_key_edit_data(message: Message, session: AsyncSession, user: U
 
     data = await state.get_data()
     key_id = data.get("edit_key_id")
-    product_id = data.get("edit_key_product_id")
 
     ok, reason = await update_product_key(session, key_id, new_data)
     await state.clear()
@@ -936,7 +941,7 @@ async def process_key_edit_data(message: Message, session: AsyncSession, user: U
         await log_action(session, user.id, "edit_key", "product_item", key_id)
         await message.answer(
             f"{plain(OK)} Ключ #{key_id} обновлён.\n\n"
-            f"Новые данные:\n<code>{new_data}</code>",
+            f"Новые данные:\n<code>{html.escape(new_data)}</code>",
             parse_mode="HTML"
         )
     else:

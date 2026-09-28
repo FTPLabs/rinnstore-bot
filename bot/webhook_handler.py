@@ -4,7 +4,6 @@ import json
 import logging
 from aiohttp import web
 from aiogram import Bot
-from sqlalchemy.ext.asyncio import AsyncSession
 from .database import AsyncSessionFactory
 from .services.payment_service import (
     process_cryptobot_webhook,
@@ -12,9 +11,12 @@ from .services.payment_service import (
     verify_rollypay_signature,
     process_freekassa_webhook,
 )
-from .services.order_service import get_order, deliver_order
+from .services.order_service import (
+    get_order, deliver_order, create_review_after_delivery_notification,
+)
 from .config import settings
-from .utils.emoji import KEY, OK, STAR
+from .utils.delivery import format_delivered_items
+from .utils.emoji import OK, STAR
 
 logger = logging.getLogger(__name__)
 
@@ -159,13 +161,14 @@ async def _notify_user_webhook(order_id: int, bot: Bot | None) -> None:
                 )
                 return
 
-            items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+            items_text = format_delivered_items(delivered)
             text = (
                 f"{OK} <b>Заказ #{order_id} оплачен</b>\n\n"
                 f"{items_text}\n\n"
                 f"{STAR} Сохраните данные."
             )
             await bot.send_message(order.user_id, text, parse_mode="HTML")
+            await create_review_after_delivery_notification(session, order_id)
     except Exception as e:
         logger.exception(f"Ошибка уведомления о заказе #{order_id}: {e}")
 

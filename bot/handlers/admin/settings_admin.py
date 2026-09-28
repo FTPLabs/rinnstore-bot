@@ -1,6 +1,7 @@
 import logging
+import ipaddress
 from decimal import Decimal
-from aiogram import Router, F, Bot
+from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -29,6 +30,9 @@ class SettingsState(StatesGroup):
     rollypay_terminal_id = State()
     rollypay_signing_secret = State()
     rollypay_webhook_host = State()
+    freekassa_shop_id = State()
+    freekassa_api_key = State()
+    freekassa_payer_ip = State()
     support_username = State()
     required_channel = State()
     shop_name = State()
@@ -45,6 +49,7 @@ def settings_main_kb() -> object:
         InlineKeyboardButton(text="₿ CryptoBot Token", callback_data="set_cryptobot_token"),
         InlineKeyboardButton(text=f"{plain(CARD)} RollyPay", callback_data="set_rollypay_menu"),
     )
+    builder.row(InlineKeyboardButton(text="FreeKassa", callback_data="set_freekassa_menu"))
     builder.row(
         InlineKeyboardButton(text=f"{plain(SUPPORT)} Поддержка", callback_data="set_support_username"),
         InlineKeyboardButton(text=f"{plain(BROADCAST)} Канал", callback_data="set_required_channel"),
@@ -77,6 +82,15 @@ def rollypay_menu_kb() -> object:
     return builder.as_markup()
 
 
+def freekassa_menu_kb() -> object:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="Shop ID", callback_data="set_freekassa_shop_id"))
+    builder.row(InlineKeyboardButton(text="API Key", callback_data="set_freekassa_api_key"))
+    builder.row(InlineKeyboardButton(text="IP сервера", callback_data="set_freekassa_payer_ip"))
+    builder.row(InlineKeyboardButton(text=f"{plain(BACK)} Назад", callback_data="admin_settings"))
+    return builder.as_markup()
+
+
 async def show_settings(call: CallbackQuery, session: AsyncSession):
     all_s = await get_all_settings(session)
 
@@ -85,6 +99,11 @@ async def show_settings(call: CallbackQuery, session: AsyncSession):
 
     rp_key = all_s.get("rollypay_api_key", "")
     rp_display = f"{rp_key[:8]}..." if len(rp_key) > 8 else (plain(OK) if rp_key else plain(FAIL))
+    fk_ready = bool(
+        all_s.get("freekassa_shop_id", "")
+        and all_s.get("freekassa_api_key", "")
+        and all_s.get("freekassa_payer_ip", "")
+    )
 
     channel = all_s.get("required_channel", "") or "не задан"
     webhook_host = all_s.get("webhook_host", env_settings.webhook_host) or "не задан"
@@ -93,6 +112,7 @@ async def show_settings(call: CallbackQuery, session: AsyncSession):
         f"{SETTINGS} <b>Настройки</b>\n\n"
         f"₿ CryptoBot: <code>{token_display}</code>\n"
         f"{CARD} RollyPay API: <code>{rp_display}</code>\n"
+        f"FreeKassa API: <code>{plain(OK) if fk_ready else plain(FAIL)}</code>\n"
         f"{GLOBAL} Webhook: {webhook_host}\n"
         f"{SUPPORT} Поддержка: @{all_s.get('support_username', 'support')}\n"
         f"{BROADCAST} Канал: {channel}\n"
@@ -253,6 +273,101 @@ async def msg_rp_webhook_host(message: Message, session: AsyncSession, user: Use
         parse_mode="HTML", reply_markup=rollypay_menu_kb()
     )
 
+
+
+# ─── FREEKASSA ─────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "set_freekassa_menu")
+async def cb_freekassa_menu(call: CallbackQuery, session: AsyncSession, user: User):
+    if not await is_admin(session, user.id):
+        return await call.answer("Нет доступа", show_alert=True)
+    await call.message.edit_text(
+        "<b>Настройки FreeKassa API</b>\n\n"
+        "Для оплаты требуются Shop ID, API Key и публичный IP сервера. "
+        "Параметры используются только для подписанных запросов к API FreeKassa.",
+        reply_markup=freekassa_menu_kb(), parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data == "set_freekassa_shop_id")
+async def cb_freekassa_shop_id(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return await call.answer("Нет доступа", show_alert=True)
+    await state.set_state(SettingsState.freekassa_shop_id)
+    await call.message.edit_text(
+        "Введите числовой Shop ID из личного кабинета FreeKassa.",
+        reply_markup=_cancel_kb("set_freekassa_menu"),
+    )
+    await call.answer()
+
+
+@router.message(SettingsState.freekassa_shop_id)
+async def msg_freekassa_shop_id(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    value = message.text.strip()
+    if not value.isdigit():
+        await message.answer("Shop ID должен состоять только из цифр.")
+        return
+    await set_setting(session, "freekassa_shop_id", value)
+    await log_action(session, user.id, "set_setting", "setting", None, {"key": "freekassa_shop_id"})
+    await state.clear()
+    await message.answer("Shop ID FreeKassa сохранён.", reply_markup=freekassa_menu_kb())
+
+
+@router.callback_query(F.data == "set_freekassa_api_key")
+async def cb_freekassa_api_key(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return await call.answer("Нет доступа", show_alert=True)
+    await state.set_state(SettingsState.freekassa_api_key)
+    await call.message.edit_text(
+        "Введите API Key кассы FreeKassa из личного кабинета.",
+        reply_markup=_cancel_kb("set_freekassa_menu"),
+    )
+    await call.answer()
+
+
+@router.message(SettingsState.freekassa_api_key)
+async def msg_freekassa_api_key(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    value = message.text.strip()
+    if len(value) < 16:
+        await message.answer("API Key выглядит некорректно. Проверьте значение и отправьте ещё раз.")
+        return
+    await set_setting(session, "freekassa_api_key", value)
+    await log_action(session, user.id, "set_setting", "setting", None, {"key": "freekassa_api_key"})
+    await state.clear()
+    await message.answer("API Key FreeKassa сохранён.", reply_markup=freekassa_menu_kb())
+
+
+@router.callback_query(F.data == "set_freekassa_payer_ip")
+async def cb_freekassa_payer_ip(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return await call.answer("Нет доступа", show_alert=True)
+    await state.set_state(SettingsState.freekassa_payer_ip)
+    await call.message.edit_text(
+        "Введите публичный IPv4/IPv6 адрес сервера, с которого бот создаёт счёт FreeKassa.",
+        reply_markup=_cancel_kb("set_freekassa_menu"),
+    )
+    await call.answer()
+
+
+@router.message(SettingsState.freekassa_payer_ip)
+async def msg_freekassa_payer_ip(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    value = message.text.strip()
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        await message.answer("Введите корректный публичный IP-адрес.")
+        return
+    await set_setting(session, "freekassa_payer_ip", value)
+    await log_action(session, user.id, "set_setting", "setting", None, {"key": "freekassa_payer_ip"})
+    await state.clear()
+    await message.answer("IP сервера FreeKassa сохранён.", reply_markup=freekassa_menu_kb())
 
 # ─── ПРОЧИЕ НАСТРОЙКИ ──────────────────────────────────────────────────────────
 

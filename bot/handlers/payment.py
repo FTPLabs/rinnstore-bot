@@ -1,24 +1,39 @@
 from decimal import Decimal
-import html
+from email.utils import parseaddr
 from datetime import datetime, timezone
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, PreCheckoutQuery, LabeledPrice
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ..models import User, Payment, Order
-from ..keyboards.user import payment_link_kb, back_to_menu_kb, order_detail_kb
+from ..keyboards.user import payment_link_kb, back_to_menu_kb
 from ..services.payment_service import (
     create_cryptobot_invoice, get_payment_by_order, get_payment_by_order_provider,
     get_payment_for_check, check_cryptobot_invoice, mark_payment_paid,
     create_rollypay_invoice, check_rollypay_payment,
-    create_freekassa_invoice,
 )
-from ..services.order_service import get_order, deliver_order, cancel_order
+from ..services.freekassa_service import (
+    check_freekassa_invoice, create_freekassa_invoice,
+    get_freekassa_currencies, is_freekassa_api_enabled,
+)
+from ..services.order_service import (
+    get_order, deliver_order, cancel_order,
+    create_review_after_delivery_notification,
+)
+from ..utils.delivery import format_delivered_items
 from ..utils.helpers import parse_callback_int
-from ..utils.emoji import KEY, OK, FAIL, WARN, CARD, COINS, plain
+from ..utils.emoji import OK, FAIL, WARN, CARD, plain
 from ..config import settings as env_settings
 
 router = Router()
+
+
+class FreeKassaPaymentState(StatesGroup):
+    waiting_email = State()
 
 
 @router.callback_query(F.data.startswith("pay_stars_"))
@@ -105,8 +120,9 @@ async def successful_stars(message: Message, session: AsyncSession, user: User):
     await session.commit()
     delivered = await deliver_order(session, order_id)
     if delivered:
-        items = "\n".join(f"{KEY} <code>{html.escape(str(d['data']))}</code>" for d in delivered)
+        items = format_delivered_items(delivered)
         await message.answer(f"{OK} <b>Оплата Stars прошла!</b>\n\n{items}", parse_mode="HTML")
+        await create_review_after_delivery_notification(session, order_id)
 
 
 def _get_webhook_host() -> str:
@@ -227,6 +243,28 @@ async def cb_pay_rollypay(call: CallbackQuery, session: AsyncSession, user: User
     )
 
 
+def _freekassa_methods_kb(order_id: int, currencies: list[dict]) -> object:
+    builder = InlineKeyboardBuilder()
+    for item in currencies[:12]:
+        try:
+            currency_id = int(item["id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        currency = str(item.get("currency") or "").upper()
+        if currency != "RUB":
+            continue
+        name = str(item.get("name") or f"Способ {currency_id}")
+        builder.row(InlineKeyboardButton(
+            text=f"{name} ({currency})",
+            callback_data=f"fk_method_{order_id}_{currency_id}_{currency}",
+            style="primary",
+        ))
+    builder.row(InlineKeyboardButton(
+        text="Отмена", callback_data=f"cancel_order_{order_id}", style="danger",
+    ))
+    return builder.as_markup()
+
+
 @router.callback_query(F.data.startswith("pay_freekassa_"))
 async def cb_pay_freekassa(call: CallbackQuery, session: AsyncSession, user: User):
     order_id = parse_callback_int(call.data, 2)
@@ -239,20 +277,107 @@ async def cb_pay_freekassa(call: CallbackQuery, session: AsyncSession, user: Use
         await call.answer("Заказ недоступен", show_alert=True)
         return
     existing = await get_payment_by_order_provider(session, order_id, "freekassa")
-    payment = existing or await create_freekassa_invoice(session, order)
-    if not payment or not payment.pay_url:
+    if existing and existing.pay_url:
         await call.message.edit_text(
-            f"{FAIL} FreeKAS временно не настроен. Выберите другой способ оплаты.",
+            f"<b>Оплата через FreeKassa</b>\n\nЗаказ: <b>#{order_id}</b>\n"
+            f"Сумма: <b>{order.total_amount} ₽</b>\n\nНажмите кнопку ниже для оплаты.",
+            reply_markup=payment_link_kb(existing.pay_url, order_id, "freekassa", user.language_code), parse_mode="HTML",
+        )
+        await call.answer()
+        return
+    if not is_freekassa_api_enabled():
+        await call.message.edit_text(
+            f"{FAIL} FreeKassa не настроена. Администратору нужны Shop ID, API Key и публичный IP сервера.",
+            reply_markup=back_to_menu_kb(user.language_code), parse_mode="HTML",
+        )
+        await call.answer()
+        return
+
+    currencies = [
+        item for item in await get_freekassa_currencies()
+        if str(item.get("currency") or "").upper() == "RUB"
+    ]
+    if not currencies:
+        await call.message.edit_text(
+            f"{FAIL} FreeKassa не вернула доступные способы оплаты. Попробуйте позже.",
             reply_markup=back_to_menu_kb(user.language_code), parse_mode="HTML",
         )
         await call.answer()
         return
     await call.message.edit_text(
-        f"<b>Оплата через FreeKAS</b>\n\nЗаказ: <b>#{order_id}</b>\n"
+        f"<b>Оплата через FreeKassa</b>\n\nЗаказ: <b>#{order_id}</b>\n"
+        f"Сумма: <b>{order.total_amount} ₽</b>\n\nВыберите способ оплаты:",
+        reply_markup=_freekassa_methods_kb(order_id, currencies), parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.regexp(r"^fk_method_\d+_\d+_[A-Z]{3}$"))
+async def cb_freekassa_method(
+    call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext,
+):
+    _, _, order_id_raw, currency_id_raw, currency = call.data.split("_", 4)
+    order_id = int(order_id_raw)
+    currency_id = int(currency_id_raw)
+    order = await get_order(session, order_id)
+    if not order or order.user_id != user.id or order.status != "pending":
+        await call.answer("Заказ недоступен", show_alert=True)
+        return
+    await state.update_data(
+        freekassa_order_id=order_id,
+        freekassa_currency_id=currency_id,
+        freekassa_currency=currency,
+    )
+    await state.set_state(FreeKassaPaymentState.waiting_email)
+    await call.message.edit_text(
+        "Укажите e-mail для счёта FreeKassa. Он передаётся платёжному провайдеру для создания счёта.",
+        reply_markup=back_to_menu_kb(user.language_code),
+    )
+    await call.answer()
+
+
+@router.message(FreeKassaPaymentState.waiting_email, F.text)
+async def msg_freekassa_email(
+    message: Message, session: AsyncSession, user: User, state: FSMContext,
+):
+    email = message.text.strip()
+    parsed_email = parseaddr(email)[1]
+    if parsed_email != email or "@" not in email or email.startswith("@") or email.endswith("@"):
+        await message.answer("Введите корректный e-mail для счёта FreeKassa.")
+        return
+    data = await state.get_data()
+    order_id = data.get("freekassa_order_id")
+    currency_id = data.get("freekassa_currency_id")
+    currency = data.get("freekassa_currency")
+    if not isinstance(order_id, int) or not isinstance(currency_id, int) or not isinstance(currency, str):
+        await state.clear()
+        await message.answer("Сессия оплаты устарела. Создайте заказ заново.")
+        return
+    order = await get_order(session, order_id)
+    if not order or order.user_id != user.id or order.status != "pending":
+        await state.clear()
+        await message.answer("Заказ недоступен.")
+        return
+    existing = await get_payment_by_order_provider(session, order_id, "freekassa")
+    payment = existing or await create_freekassa_invoice(
+        session,
+        order,
+        payer_email=email,
+        currency_id=currency_id,
+        currency=currency,
+    )
+    if not payment or not payment.pay_url:
+        await message.answer(
+            f"{FAIL} Не удалось создать счёт FreeKassa. Попробуйте другой способ оплаты.",
+            reply_markup=back_to_menu_kb(user.language_code), parse_mode="HTML",
+        )
+        return
+    await state.clear()
+    await message.answer(
+        f"<b>Оплата через FreeKassa</b>\n\nЗаказ: <b>#{order_id}</b>\n"
         f"Сумма: <b>{order.total_amount} ₽</b>\n\nНажмите кнопку ниже для оплаты.",
         reply_markup=payment_link_kb(payment.pay_url, order_id, "freekassa", user.language_code), parse_mode="HTML",
     )
-    await call.answer()
 
 
 # ── БАЛАНС ────────────────────────────────────────────────────────────────────
@@ -325,12 +450,13 @@ async def cb_pay_balance(call: CallbackQuery, session: AsyncSession, user: User)
         await call.answer(f"{plain(OK)} Оплата прошла")
         return
 
-    items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+    items_text = format_delivered_items(delivered)
     await call.message.edit_text(
         f"{OK} <b>Оплачено с баланса!</b>\n\n{items_text}\n\nСохраните данные.",
         reply_markup=back_to_menu_kb(user.language_code),
         parse_mode="HTML",
     )
+    await create_review_after_delivery_notification(session, order_id)
     await call.answer(f"{plain(OK)} Оплата прошла")
 
 
@@ -357,24 +483,25 @@ async def cb_check_payment(call: CallbackQuery, session: AsyncSession, user: Use
         if not delivered:
             await call.answer("Ошибка выдачи товара. Напишите в поддержку.", show_alert=True)
             return
-        items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+        items_text = format_delivered_items(delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
             reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
+        await create_review_after_delivery_notification(session, order_id)
         await call.answer(f"{plain(OK)} Оплата подтверждена")
         return
 
     if provider == "freekassa":
-        await call.answer("Ожидаем подтверждение FreeKAS. Попробуйте ещё раз через несколько секунд.", show_alert=True)
+        await _check_freekassa(call, session, order_id, user)
     elif provider == "rollypay":
-        await _check_rollypay(call, session, order_id, order)
+        await _check_rollypay(call, session, order_id, order, user)
     else:
-        await _check_cryptobot(call, session, order_id, order)
+        await _check_cryptobot(call, session, order_id, order, user)
 
 
-async def _check_cryptobot(call, session, order_id, order):
+async def _check_cryptobot(call, session, order_id, order, user):
     payment = await get_payment_for_check(session, order_id, "cryptobot")
     if not payment:
         payment = await get_payment_by_order(session, order_id)
@@ -387,12 +514,13 @@ async def _check_cryptobot(call, session, order_id, order):
         if not delivered:
             await call.answer("Ошибка выдачи. Напишите в поддержку.", show_alert=True)
             return
-        items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+        items_text = format_delivered_items(delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
             reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
+        await create_review_after_delivery_notification(session, order_id)
         await call.answer(f"{plain(OK)} Оплата подтверждена")
         return
 
@@ -408,12 +536,13 @@ async def _check_cryptobot(call, session, order_id, order):
         if locked_payment.status == "paid":
             delivered = await deliver_order(session, order_id)
             if delivered:
-                items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+                items_text = format_delivered_items(delivered)
                 await call.message.edit_text(
                     f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
                     reply_markup=back_to_menu_kb(user.language_code),
                     parse_mode="HTML",
                 )
+                await create_review_after_delivery_notification(session, order_id)
             await call.answer(f"{plain(OK)} Оплата подтверждена")
             return
         await mark_payment_paid(session, locked_payment)
@@ -421,12 +550,13 @@ async def _check_cryptobot(call, session, order_id, order):
         if not delivered:
             await call.answer("Ошибка выдачи. Напишите в поддержку.", show_alert=True)
             return
-        items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+        items_text = format_delivered_items(delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено!</b>\n\n{items_text}\n\nСохраните данные.",
             reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
+        await create_review_after_delivery_notification(session, order_id)
         await call.answer(f"{plain(OK)} Оплата подтверждена")
     elif status == "expired":
         await call.answer("Время оплаты истекло. Создайте новый заказ.", show_alert=True)
@@ -436,7 +566,43 @@ async def _check_cryptobot(call, session, order_id, order):
         await call.answer(f"Статус: {status}", show_alert=True)
 
 
-async def _check_rollypay(call, session, order_id, order):
+async def _check_freekassa(call, session, order_id: int, user: User):
+    payment = await get_payment_for_check(session, order_id, "freekassa")
+    if not payment:
+        await call.answer("Счёт FreeKassa не найден", show_alert=True)
+        return
+    status = await check_freekassa_invoice(payment)
+    if status == "paid":
+        locked = await session.execute(
+            select(Payment).where(Payment.id == payment.id).with_for_update()
+        )
+        locked_payment = locked.scalar_one_or_none()
+        if not locked_payment:
+            await call.answer("Счёт FreeKassa не найден", show_alert=True)
+            return
+        if locked_payment.status != "paid":
+            await mark_payment_paid(session, locked_payment)
+        delivered = await deliver_order(session, order_id)
+        if not delivered:
+            await call.answer("Оплата подтверждена, но выдача не удалась. Напишите в поддержку.", show_alert=True)
+            return
+        items_text = format_delivered_items(delivered)
+        await call.message.edit_text(
+            f"{OK} <b>Оплата FreeKassa подтверждена!</b>\n\n{items_text}\n\nСохраните данные.",
+            reply_markup=back_to_menu_kb(user.language_code),
+            parse_mode="HTML",
+        )
+        await create_review_after_delivery_notification(session, order_id)
+        await call.answer(f"{plain(OK)} Оплата подтверждена")
+    elif status == "failed":
+        await call.answer("Платёж FreeKassa отклонён или истёк. Создайте новый заказ.", show_alert=True)
+    elif status == "pending":
+        await call.answer("Оплата ещё не поступила. Проверьте статус через несколько секунд.", show_alert=True)
+    else:
+        await call.answer("Не удалось проверить статус FreeKassa. Попробуйте позже.", show_alert=True)
+
+
+async def _check_rollypay(call, session, order_id, order, user):
     from ..services.settings_service import get_cached
     from ..config import settings as env_settings
 
@@ -455,12 +621,13 @@ async def _check_rollypay(call, session, order_id, order):
         if not delivered:
             await call.answer("Ошибка выдачи. Напишите в поддержку.", show_alert=True)
             return
-        items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+        items_text = format_delivered_items(delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено через СБП!</b>\n\n{items_text}\n\nСохраните данные.",
             reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
+        await create_review_after_delivery_notification(session, order_id)
         await call.answer(f"{plain(OK)} Оплата подтверждена")
         return
 
@@ -476,12 +643,13 @@ async def _check_rollypay(call, session, order_id, order):
         if locked_payment.status == "paid":
             delivered = await deliver_order(session, order_id)
             if delivered:
-                items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+                items_text = format_delivered_items(delivered)
                 await call.message.edit_text(
                     f"{OK} <b>Оплачено через СБП!</b>\n\n{items_text}\n\nСохраните данные.",
                     reply_markup=back_to_menu_kb(user.language_code),
                     parse_mode="HTML",
                 )
+                await create_review_after_delivery_notification(session, order_id)
             await call.answer(f"{plain(OK)} Оплата подтверждена")
             return
         await mark_payment_paid(session, locked_payment)
@@ -489,12 +657,13 @@ async def _check_rollypay(call, session, order_id, order):
         if not delivered:
             await call.answer("Ошибка выдачи. Напишите в поддержку.", show_alert=True)
             return
-        items_text = "\n".join(f"{KEY} <code>{d['data']}</code>" for d in delivered)
+        items_text = format_delivered_items(delivered)
         await call.message.edit_text(
             f"{OK} <b>Оплачено через СБП!</b>\n\n{items_text}\n\nСохраните данные.",
             reply_markup=back_to_menu_kb(user.language_code),
             parse_mode="HTML",
         )
+        await create_review_after_delivery_notification(session, order_id)
         await call.answer(f"{plain(OK)} Оплата подтверждена")
     elif status == "created":
         await call.answer("Оплата ещё не поступила. Попробуйте позже.", show_alert=True)
