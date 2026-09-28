@@ -17,6 +17,7 @@ from .settings_service import get_cached
 
 logger = logging.getLogger(__name__)
 API_URL = "https://api.fk.life/v1"
+FKWALLET_CURRENCY_ID = 1
 
 
 def _settings() -> dict[str, str]:

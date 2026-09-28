@@ -17,6 +17,7 @@ from ...keyboards.user import back_to_menu_kb
 from ...models import Order, Payment, User
 from ...services.admin_service import is_admin, log_action
 from ...services.freekassa_service import (
+    FKWALLET_CURRENCY_ID,
     check_freekassa_invoice,
     create_freekassa_invoice,
     get_freekassa_currencies,
@@ -48,7 +49,7 @@ def _methods_kb(currencies: list[dict]) -> object:
         except (KeyError, TypeError, ValueError):
             continue
         currency = str(item.get("currency") or "").upper()
-        if currency != "RUB":
+        if currency != "RUB" or currency_id != FKWALLET_CURRENCY_ID:
             continue
         name = str(item.get("name") or f"Способ {currency_id}")
         builder.row(InlineKeyboardButton(
@@ -85,6 +86,7 @@ async def cb_test_payment(call: CallbackQuery, session: AsyncSession, user: User
     currencies = [
         item for item in await get_freekassa_currencies()
         if str(item.get("currency") or "").upper() == "RUB"
+        and str(item.get("id")) == str(FKWALLET_CURRENCY_ID)
     ]
     if not currencies:
         await call.message.edit_text(

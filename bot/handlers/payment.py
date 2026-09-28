@@ -18,7 +18,7 @@ from ..services.payment_service import (
 )
 from ..services.freekassa_service import (
     check_freekassa_invoice, create_freekassa_invoice,
-    get_freekassa_currencies, is_freekassa_api_enabled,
+    FKWALLET_CURRENCY_ID, get_freekassa_currencies, is_freekassa_api_enabled,
 )
 from ..services.order_service import (
     get_order, deliver_order, cancel_order,
@@ -251,7 +251,7 @@ def _freekassa_methods_kb(order_id: int, currencies: list[dict]) -> object:
         except (KeyError, TypeError, ValueError):
             continue
         currency = str(item.get("currency") or "").upper()
-        if currency != "RUB":
+        if currency != "RUB" or currency_id != FKWALLET_CURRENCY_ID:
             continue
         name = str(item.get("name") or f"Способ {currency_id}")
         builder.row(InlineKeyboardButton(
@@ -296,6 +296,7 @@ async def cb_pay_freekassa(call: CallbackQuery, session: AsyncSession, user: Use
     currencies = [
         item for item in await get_freekassa_currencies()
         if str(item.get("currency") or "").upper() == "RUB"
+        and str(item.get("id")) == str(FKWALLET_CURRENCY_ID)
     ]
     if not currencies:
         await call.message.edit_text(
@@ -319,6 +320,9 @@ async def cb_freekassa_method(
     _, _, order_id_raw, currency_id_raw, currency = call.data.split("_", 4)
     order_id = int(order_id_raw)
     currency_id = int(currency_id_raw)
+    if currency_id != FKWALLET_CURRENCY_ID or currency != "RUB":
+        await call.answer("Доступен только FKWallet RUB", show_alert=True)
+        return
     order = await get_order(session, order_id)
     if not order or order.user_id != user.id or order.status != "pending":
         await call.answer("Заказ недоступен", show_alert=True)
