@@ -1,6 +1,7 @@
 import html
 from datetime import datetime, timezone
 from aiogram import Router, F
+from aiogram import Bot
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -8,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import Review, User, Order
 from ..keyboards.review import anonymity_kb, comment_kb, rating_kb
+from ..services.review_service import notify_review_moderators
 from ..utils.i18n import t
 
 router = Router()
@@ -89,7 +91,7 @@ async def _complete(session: AsyncSession, review: Review, comment: str | None =
 
 
 @router.callback_query(F.data.regexp(r"^review_skip_\d+$"))
-async def skip_comment(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+async def skip_comment(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext, bot: Bot):
     review_id = int(call.data.split("_")[2])
     result = await session.execute(select(Review).where(Review.id == review_id).with_for_update())
     review = result.scalar_one_or_none()
@@ -98,12 +100,13 @@ async def skip_comment(call: CallbackQuery, session: AsyncSession, user: User, s
         return
     await _complete(session, review)
     await state.clear()
-    await call.message.edit_text(t(user, "review_saved"), reply_markup=comment_kb(review.id))
+    await call.message.edit_text(t(user, "review_saved"), reply_markup=None)
+    await notify_review_moderators(bot, session, review.id)
     await call.answer()
 
 
 @router.message(ReviewState.waiting_comment, F.text)
-async def save_comment(message: Message, session: AsyncSession, user: User, state: FSMContext):
+async def save_comment(message: Message, session: AsyncSession, user: User, state: FSMContext, bot: Bot):
     data = await state.get_data()
     review_id = data.get("review_id")
     result = await session.execute(select(Review).where(Review.id == review_id).with_for_update())
@@ -114,4 +117,5 @@ async def save_comment(message: Message, session: AsyncSession, user: User, stat
         return
     await _complete(session, review, message.text.strip())
     await state.clear()
-    await message.answer(t(user, "review_saved"), reply_markup=comment_kb(review.id))
+    await message.answer(t(user, "review_saved"))
+    await notify_review_moderators(bot, session, review.id)

@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from aiogram import Bot
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from ..database import AsyncSessionFactory
 from ..models import Review, Order, User, Admin
@@ -115,7 +116,41 @@ async def process_review_jobs(bot: Bot) -> None:
             await session.commit()
 
 
-async def create_review_if_missing(session, order: Order) -> None:
+async def notify_review_moderators(bot: Bot, session, review_id: int) -> bool:
+    """Send a completed review to admins immediately, without worker delay."""
+    result = await session.execute(
+        select(Review)
+        .options(selectinload(Review.order).selectinload(Order.items))
+        .where(Review.id == review_id)
+    )
+    review = result.scalar_one_or_none()
+    if not review or review.status != "completed" or review.moderation_status != "pending":
+        return False
+    admins = (await session.execute(select(Admin.user_id))).scalars().all()
+    if not admins:
+        return False
+    try:
+        buyer = await session.get(User, review.user_id)
+        me = await bot.get_me()
+        text = format_review_text(review, review.order, buyer, me.username or "rinnnstore_bot")
+        sent_ids = []
+        for admin_id in admins:
+            sent = await bot.send_message(
+                admin_id, text, reply_markup=moderation_kb(review.id), parse_mode="HTML"
+            )
+            sent_ids.append(sent.message_id)
+        review.moderation_status = "notified"
+        review.admin_message_id = sent_ids[0] if sent_ids else None
+        await session.commit()
+        return True
+    except Exception as exc:
+        review.last_error = str(exc)[:500]
+        await session.commit()
+        logger.warning("Immediate review moderation notification failed id=%s: %s", review_id, exc)
+        return False
+
+
+async def create_review_if_missing(session: AsyncSession, order: Order) -> None:
     exists = await session.execute(select(Review.id).where(Review.order_id == order.id))
     if exists.scalar_one_or_none() is not None:
         return
