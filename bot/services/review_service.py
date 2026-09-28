@@ -62,7 +62,6 @@ async def process_review_jobs(bot: Bot) -> None:
     if get_cached("reviews_enabled").lower() not in ("1", "true", "yes", "on"):
         return
     now = datetime.now(timezone.utc)
-    initial = _int_setting("review_initial_delay_minutes", 1)
     interval = _int_setting("review_reminder_interval_hours", 24)
     max_reminders = _int_setting("review_max_reminders", 3)
     async with AsyncSessionFactory() as session:

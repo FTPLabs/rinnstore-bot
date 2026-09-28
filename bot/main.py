@@ -195,7 +195,6 @@ async def main():
         await bot.session.close()
         await storage.close()
         await engine.dispose()
-        await bot.session.close()
         logger.info("Бот остановлен")
 
 

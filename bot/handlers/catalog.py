@@ -1,6 +1,7 @@
 from decimal import Decimal
 from datetime import datetime, timezone
 from aiogram import Router, F
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
@@ -371,6 +372,7 @@ async def cb_cat_back(call: CallbackQuery, session: AsyncSession, user: User):
     if product_id is None:
         await cb_catalog(call, session, user)
         return
+    await call.answer()
 
     cat_id = await get_product_category_id(session, product_id)
     if cat_id is None:
@@ -385,16 +387,17 @@ async def cb_cat_back(call: CallbackQuery, session: AsyncSession, user: User):
     product_list = await get_products_in_category(session, cat_id)
     stock_map = await _stock_map(session, product_list)
     icon = "\U0001f4c1" if category.parent_id else "\U0001f4c2"
-    await call.message.edit_text(
-        f"<b>{icon} {localized_name(category, user)}</b>\n\nВыберите товар:",
-        reply_markup=products_kb(product_list, cat_id, parent_cat_id=category.parent_id, stock_map=stock_map, language=user.language_code),
-        parse_mode="HTML"
+    text = f"<b>{icon} {localized_name(category, user)}</b>\n\nВыберите товар:"
+    markup = products_kb(
+        product_list, cat_id, parent_cat_id=category.parent_id,
+        stock_map=stock_map, language=user.language_code,
     )
-    await call.answer()
-
-
+    if call.message.photo:
+        await call.message.edit_caption(caption=text, reply_markup=markup, parse_mode="HTML")
+    else:
+        await call.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
 @router.callback_query(F.data.startswith("buy_"))
-async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User):
+async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
     parts = call.data.split("_")
     if len(parts) < 3:
         await call.answer("Ошибка данных", show_alert=True)
@@ -435,7 +438,11 @@ async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User):
         unit_price = product.price
 
     cart_items = [{"product_id": product_id, "qty": qty, "price": unit_price}]
-    order = await create_order(session, user.id, cart_items)
+    state_data = await state.get_data()
+    promo_code = state_data.get("promo_code")
+    order = await create_order(session, user.id, cart_items, promo_code=promo_code)
+    if promo_code:
+        await state.update_data(promo_code=None)
     freekassa_enabled = is_freekassa_api_enabled()
 
     await call.message.edit_text(

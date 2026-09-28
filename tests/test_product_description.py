@@ -6,8 +6,7 @@ def test_legacy_unicode_emoji_are_upgraded_to_telegram_custom_emoji() -> None:
     assert '<tg-emoji emoji-id="5893185207355315979">🔥</tg-emoji>' in rendered
     assert '<tg-emoji emoji-id="5895514131896733546">✅</tg-emoji>' in rendered
     assert '<tg-emoji emoji-id="5895652322469482989">📱</tg-emoji>' in rendered
-    assert '<tg-emoji emoji-id="5893100690988863311">⏳</tg-emoji>' not in rendered
-    assert "⏳" in rendered
+    assert '<tg-emoji emoji-id="5902050947567194830">⏳</tg-emoji>' in rendered
 
 
 def test_existing_custom_emoji_tags_are_not_nested() -> None:

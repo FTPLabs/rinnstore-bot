@@ -13,6 +13,9 @@ _CUSTOM_EMOJI_TAG_RE = re.compile(r"(<tg-emoji\b[^>]*>.*?</tg-emoji>)", re.DOTAL
 _PREMIUM_BY_UNICODE: dict[str, str] = {}
 for _custom_id, _fallback in PROTECTSTATUS_EMOJIS:
     _PREMIUM_BY_UNICODE.setdefault(_fallback, _custom_id)
+# The catalog contains a premium clock emoji; use it for legacy hourglass text
+# until the exact hourglass custom emoji ID is supplied by the admin.
+_PREMIUM_BY_UNICODE.setdefault("⏳", "5902050947567194830")
 _PREMIUM_EMOJI_RE = re.compile(
     "|".join(re.escape(value) for value in sorted(_PREMIUM_BY_UNICODE, key=len, reverse=True))
 )

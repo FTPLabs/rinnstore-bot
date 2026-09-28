@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from datetime import datetime, timezone
-from ..models import PromoCode
+from ..models import PromoCode, User
 from ..keyboards.user import back_to_menu_kb
 
 router = Router()
@@ -27,7 +27,7 @@ async def cb_promo(call: CallbackQuery, state: FSMContext):
 
 
 @router.message(UserPromoStates.waiting_code)
-async def process_promo_code(message: Message, session: AsyncSession, state: FSMContext):
+async def process_promo_code(message: Message, session: AsyncSession, user: User, state: FSMContext):
     code = message.text.strip().upper()
     result = await session.execute(
         select(PromoCode).where(
