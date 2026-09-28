@@ -1,5 +1,6 @@
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -150,8 +151,21 @@ async def cb_profile(call: CallbackQuery, user: User, session: AsyncSession, bot
 
 
 @router.callback_query(F.data == "support")
-async def cb_support(call: CallbackQuery, session: AsyncSession):
-    username = await get_setting(session, "support_username")
-    text = f"<b>{SUPPORT} {t(user, 'support')}</b>\n\n{t(user, 'write_support')}: @{username}"
-    await call.message.edit_text(text, reply_markup=back_to_menu_kb(), parse_mode="HTML")
+async def cb_support(call: CallbackQuery, session: AsyncSession, user: User):
+    configured = (await get_setting(session, "support_username") or "support").strip()
+    support_url = configured if configured.startswith(("http://", "https://", "tg://")) else f"https://t.me/{configured.lstrip('@')}"
+    display_name = configured.lstrip("@").replace("https://t.me/", "").strip("/")
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(
+        text="Написать в поддержку" if user.language_code != "en" else "Contact support",
+        url=support_url,
+        icon_custom_emoji_id=emoji_id("5893297890117292323"),
+        style="primary",
+    ))
+    builder.row(InlineKeyboardButton(
+        text=t(user, "menu"), callback_data="main_menu",
+        icon_custom_emoji_id=emoji_id("5893311672667345793"), style="primary",
+    ))
+    text = f"<b>{SUPPORT} {t(user, 'support')}</b>\n\n{t(user, 'write_support')}: @{display_name}"
+    await call.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     await call.answer()
