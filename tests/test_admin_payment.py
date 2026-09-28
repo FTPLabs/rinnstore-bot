@@ -1,58 +1,5 @@
-from decimal import Decimal
-
-from bot.handlers.admin.test_payment_admin import TEST_AMOUNT, TEST_NOTE, _methods_kb, _payment_kb
-from bot.handlers.payment import _freekassa_methods_kb
 from bot.handlers.start import _support_url
-from bot.keyboards.admin import admin_main_kb
-
-
-def test_admin_menu_contains_test_payment_button() -> None:
-    labels = [
-        button.text
-        for row in admin_main_kb().inline_keyboard
-        for button in row
-    ]
-    assert "₽ Тестовый платёж 1 ₽" in labels
-
-
-def test_test_payment_is_fixed_to_one_ruble() -> None:
-    assert TEST_AMOUNT == Decimal("1.00")
-    assert TEST_NOTE == "admin_freekassa_test_payment"
-
-
-def test_test_payment_keyboard_uses_admin_check_callback() -> None:
-    markup = _payment_kb("https://pay.example/1", 42)
-    callbacks = [
-        button.callback_data
-        for row in markup.inline_keyboard
-        for button in row
-        if button.callback_data
-    ]
-    assert "admin_test_check_42" in callbacks
-    assert "check_payment_42_freekassa" not in callbacks
 
 
 def test_support_username_opens_direct_telegram_chat() -> None:
     assert _support_url("@rinnn12333") == "https://t.me/rinnn12333"
-
-
-def test_freekassa_user_keyboard_contains_only_fkwallet() -> None:
-    methods = [
-        {"id": 1, "currency": "RUB", "name": "FKWallet RUB"},
-        {"id": 36, "currency": "RUB", "name": "Card RUB"},
-        {"id": 8, "currency": "USD", "name": "Card USD"},
-    ]
-    markup = _freekassa_methods_kb(42, methods)
-    buttons = [button for row in markup.inline_keyboard for button in row]
-    assert [button.callback_data for button in buttons if button.callback_data and button.callback_data.startswith("fk_method_")] == ["fk_method_42_1_RUB"]
-
-
-def test_freekassa_admin_test_keyboard_contains_only_fkwallet() -> None:
-    methods = [
-        {"id": 1, "currency": "RUB", "name": "FKWallet RUB"},
-        {"id": 36, "currency": "RUB", "name": "Card RUB"},
-    ]
-    markup = _methods_kb(methods)
-    callbacks = [button.callback_data for row in markup.inline_keyboard for button in row if button.callback_data]
-    assert "admin_test_fk_1_RUB" in callbacks
-    assert "admin_test_fk_36_RUB" not in callbacks

@@ -36,9 +36,6 @@ def admin_main_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=f"{plain(SETTINGS)} Настройки", callback_data="admin_settings"),
     )
     builder.row(
-        InlineKeyboardButton(text="₽ Тестовый платёж 1 ₽", callback_data="admin_test_payment"),
-    )
-    builder.row(
         InlineKeyboardButton(text="🧪 Полная тестовая покупка", callback_data="admin_full_test_purchase"),
     )
     builder.row(InlineKeyboardButton(text=f"{plain(HOME)} Главное меню", callback_data="main_menu"))

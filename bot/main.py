@@ -17,7 +17,7 @@ from .handlers import start, catalog, cart, payment, orders, promo, reviews
 from .handlers import onboarding
 from .handlers.admin import main as admin_main
 from .handlers.admin import products, orders_admin, users_admin, promos_admin, broadcast_admin
-from .handlers.admin import settings_admin, test_payment_admin, full_test_purchase
+from .handlers.admin import settings_admin, full_test_purchase
 from .handlers.admin import catalog_admin
 from .handlers.admin import reviews_admin
 from .database import AsyncSessionFactory
@@ -117,7 +117,6 @@ async def main():
     dp.include_router(promos_admin.router)
     dp.include_router(broadcast_admin.router)
     dp.include_router(settings_admin.router)
-    dp.include_router(test_payment_admin.router)
     dp.include_router(full_test_purchase.router)
     dp.include_router(reviews_admin.router)
 
