@@ -12,6 +12,7 @@ def test_support_is_direct_red_url_button() -> None:
 def test_admin_panel_is_red() -> None:
     admin_button = main_menu_kb(is_admin=True).inline_keyboard[-1][0]
     assert admin_button.callback_data == "admin_main"
+    assert "Админка" in admin_button.text
     assert admin_button.style == "danger"
 
 

@@ -7,7 +7,7 @@ SUPPORTED_LANGUAGES = {"ru", "en"}
 TEXTS = {
     "ru": {
         "catalog": "Каталог", "orders": "Мои заказы", "promo": "Промокод", "profile": "Профиль", "support": "Поддержка",
-        "admin": "Админ-панель", "language": "Язык", "choose_language": "Выберите язык:", "language_changed": "Язык изменён.",
+        "admin": "Админка", "language": "Язык", "choose_language": "Выберите язык:", "language_changed": "Язык изменён.",
         "russian": "Русский", "english": "English", "back": "Назад", "menu": "Меню", "buy_key": "Купить свой ключ",
         "welcome_subtitle": "Цифровые товары · Крипто · Мгновенно", "welcome_access": "Для доступа к боту:",
         "subscribe": "Подпишитесь на наш канал", "terms_step": "Ознакомьтесь с условиями", "accept_step": "Нажмите «Принимаю»",
