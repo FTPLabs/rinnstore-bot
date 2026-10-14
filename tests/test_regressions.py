@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import hmac
+from unittest.mock import AsyncMock
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -9,7 +10,7 @@ from aiogram.utils.text_decorations import html_decoration
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from bot.handlers.catalog import _product_kb
+from bot.handlers.catalog import _edit_message_text_or_caption, _product_kb
 from bot.keyboards.review import comment_kb, rating_kb
 from bot.models import Base, Order, OrderItem, Product, ProductItem, Review, User
 from bot.services.freekassa_service import freekassa_api_signature
@@ -53,6 +54,44 @@ def test_product_buy_button_has_purchase_icon_and_valid_callback() -> None:
     assert buy_button.icon_custom_emoji_id == "5893473283696759404"
     assert buy_button.style == "primary"
     assert back_button.icon_custom_emoji_id == "5893333516871012690"
+
+
+def test_purchase_updates_photo_caption_instead_of_missing_text() -> None:
+    async def scenario() -> None:
+        message = SimpleNamespace(
+            photo=[object()],
+            edit_caption=AsyncMock(),
+            edit_text=AsyncMock(),
+        )
+        markup = object()
+
+        await _edit_message_text_or_caption(message, "order summary", markup)
+
+        message.edit_caption.assert_awaited_once_with(
+            caption="order summary", reply_markup=markup, parse_mode="HTML"
+        )
+        message.edit_text.assert_not_awaited()
+
+    asyncio.run(scenario())
+
+
+def test_purchase_updates_text_for_text_only_message() -> None:
+    async def scenario() -> None:
+        message = SimpleNamespace(
+            photo=[],
+            edit_caption=AsyncMock(),
+            edit_text=AsyncMock(),
+        )
+        markup = object()
+
+        await _edit_message_text_or_caption(message, "order summary", markup)
+
+        message.edit_text.assert_awaited_once_with(
+            "order summary", reply_markup=markup, parse_mode="HTML"
+        )
+        message.edit_caption.assert_not_awaited()
+
+    asyncio.run(scenario())
 
 
 def test_delivered_key_html_is_escaped() -> None:

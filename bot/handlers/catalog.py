@@ -129,6 +129,14 @@ async def _show_product(call: CallbackQuery, session: AsyncSession, product_id: 
     return product, stock
 
 
+async def _edit_message_text_or_caption(message, text: str, reply_markup) -> None:
+    """Edit the visible content of either a text message or a photo card."""
+    if message.photo:
+        await message.edit_caption(caption=text, reply_markup=reply_markup, parse_mode="HTML")
+    else:
+        await message.edit_text(text, reply_markup=reply_markup, parse_mode="HTML")
+
+
 def _get_back_cb(category) -> str:
     if not category.parent_id:
         return "catalog"
@@ -445,12 +453,11 @@ async def cb_buy(call: CallbackQuery, session: AsyncSession, user: User, state: 
         await state.update_data(promo_code=None)
     freekassa_enabled = is_freekassa_api_enabled()
 
-    await call.message.edit_text(
+    await _edit_message_text_or_caption(call.message,
         f"{e('5893311672667345793', '🔑')} <b>ЗАКАЗ #{order.id} СОЗДАН</b>\n\n"
         f"<b>{product.name} × {qty}</b>\n"
         f"<b>Итого: {order.total_amount} ₽</b>\n\n"
         f"<b>Выберите способ оплаты:</b>",
-        reply_markup=payment_method_kb(order.id, user.balance, freekassa_enabled=freekassa_enabled, language=user.language_code),
-        parse_mode="HTML"
+        payment_method_kb(order.id, user.balance, freekassa_enabled=freekassa_enabled, language=user.language_code),
     )
     await call.answer()
