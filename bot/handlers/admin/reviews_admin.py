@@ -1,4 +1,4 @@
-import html
+import logging
 from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from ...utils.custom_emoji import emoji_id
 from ...utils.emoji import OK, FAIL
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 def buy_kb() -> InlineKeyboardMarkup:
@@ -44,7 +45,15 @@ async def approve_review(call: CallbackQuery, session: AsyncSession, user: User,
     buyer = await session.get(User, review.user_id)
     me = await bot.get_me()
     text = format_review_text(review, review.order, buyer, me.username or "rinnnstore_bot")
-    sent = await bot.send_message(channel, text, reply_markup=buy_kb(), parse_mode="HTML")
+    try:
+        sent = await bot.send_message(channel, text, reply_markup=buy_kb(), parse_mode="HTML")
+    except Exception:
+        logger.exception("Review publication failed review_id=%s channel=%s", review.id, channel)
+        await call.answer(
+            "Не удалось отправить отзыв. Проверьте ID канала и права бота на публикацию.",
+            show_alert=True,
+        )
+        return
     review.moderation_status = "approved"
     review.publication_status = "published"
     review.published_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
