@@ -1,17 +1,20 @@
 import asyncio
 import hashlib
 import hmac
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from decimal import Decimal
 from types import SimpleNamespace
 
 from aiogram.types import MessageEntity
 from aiogram.utils.text_decorations import html_decoration
-from sqlalchemy import select
+from sqlalchemy import create_engine, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from bot.handlers.catalog import _edit_message_text_or_caption, _product_kb
 from bot.keyboards.review import comment_kb, rating_kb
+from bot.main import _table_column_names
+from bot.services.review_service import _send_moderation_notice
+from bot.handlers.admin.settings_admin import _is_valid_telegram_chat_target, settings_main_kb
 from bot.models import Base, Order, OrderItem, Product, ProductItem, Review, User
 from bot.services.freekassa_service import freekassa_api_signature
 from bot.services.order_service import (
@@ -92,6 +95,58 @@ def test_purchase_updates_text_for_text_only_message() -> None:
         message.edit_caption.assert_not_awaited()
 
     asyncio.run(scenario())
+
+
+def test_schema_column_detection_uses_dialect_aware_inspector() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE reviews (id INTEGER PRIMARY KEY, status TEXT)"
+            )
+            assert _table_column_names(connection, "reviews") == {"id", "status"}
+    finally:
+        engine.dispose()
+
+
+def test_review_moderation_routes_once_to_configured_group() -> None:
+    async def scenario() -> None:
+        bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=55)))
+        with patch("bot.services.review_service.get_cached", return_value="-1001234567890"):
+            sent_ids = await _send_moderation_notice(bot, "review", 7, [11, 22])
+
+        assert sent_ids == [55]
+        bot.send_message.assert_awaited_once()
+        assert bot.send_message.await_args.args[0] == "-1001234567890"
+        assert bot.send_message.await_args.kwargs["reply_markup"].inline_keyboard[0][0].callback_data == "review_approve_7"
+
+    asyncio.run(scenario())
+
+
+def test_review_moderation_falls_back_to_each_admin_dm() -> None:
+    async def scenario() -> None:
+        bot = SimpleNamespace(send_message=AsyncMock(side_effect=[SimpleNamespace(message_id=10), SimpleNamespace(message_id=11)]))
+        with patch("bot.services.review_service.get_cached", return_value=""):
+            sent_ids = await _send_moderation_notice(bot, "review", 8, [11, 22])
+
+        assert sent_ids == [10, 11]
+        assert [entry.args[0] for entry in bot.send_message.await_args_list] == [11, 22]
+
+    asyncio.run(scenario())
+
+
+def test_review_chat_configuration_accepts_supported_targets_only() -> None:
+    assert _is_valid_telegram_chat_target("@review_channel")
+    assert _is_valid_telegram_chat_target("-1001234567890")
+    assert not _is_valid_telegram_chat_target("https://t.me/review_channel")
+    assert not _is_valid_telegram_chat_target("12345")
+    callbacks = {
+        button.callback_data
+        for row in settings_main_kb().inline_keyboard
+        for button in row
+    }
+    assert "set_review_channel" in callbacks
+    assert "set_review_moderation_chat" in callbacks
 
 
 def test_delivered_key_html_is_escaped() -> None:

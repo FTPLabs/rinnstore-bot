@@ -30,6 +30,18 @@ def _product_names(order) -> str:
     return ", ".join(item.product.name for item in (order.items if order else []) if item.product) or "—"
 
 
+async def _send_moderation_notice(bot: Bot, text: str, review_id: int, admins: list[int]) -> list[int]:
+    moderation_chat_id = get_cached("review_moderation_chat_id").strip()
+    recipients = [moderation_chat_id] if moderation_chat_id else admins
+    sent_ids = []
+    for recipient in recipients:
+        sent = await bot.send_message(
+            recipient, text, reply_markup=moderation_kb(review_id), parse_mode="HTML"
+        )
+        sent_ids.append(sent.message_id)
+    return sent_ids
+
+
 def format_review_text(review: Review, order: Order | None, buyer: User | None, bot_username: str) -> str:
     product = html.escape(_product_names(order))
     amount = html.escape(str(order.total_amount if order else "—"))
@@ -103,10 +115,7 @@ async def process_review_jobs(bot: Bot) -> None:
                 try:
                     buyer = await session.get(User, review.user_id)
                     text = format_review_text(review, review.order, buyer, me.username or "rinnnstore_bot")
-                    sent_ids = []
-                    for admin_id in admins:
-                        sent = await bot.send_message(admin_id, text, reply_markup=moderation_kb(review.id), parse_mode="HTML")
-                        sent_ids.append(sent.message_id)
+                    sent_ids = await _send_moderation_notice(bot, text, review.id, admins)
                     review.moderation_status = "notified"
                     review.admin_message_id = sent_ids[0] if sent_ids else None
                 except Exception as exc:
@@ -132,12 +141,7 @@ async def notify_review_moderators(bot: Bot, session, review_id: int) -> bool:
         buyer = await session.get(User, review.user_id)
         me = await bot.get_me()
         text = format_review_text(review, review.order, buyer, me.username or "rinnnstore_bot")
-        sent_ids = []
-        for admin_id in admins:
-            sent = await bot.send_message(
-                admin_id, text, reply_markup=moderation_kb(review.id), parse_mode="HTML"
-            )
-            sent_ids.append(sent.message_id)
+        sent_ids = await _send_moderation_notice(bot, text, review.id, admins)
         review.moderation_status = "notified"
         review.admin_message_id = sent_ids[0] if sent_ids else None
         await session.commit()

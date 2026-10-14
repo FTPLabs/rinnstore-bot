@@ -25,7 +25,7 @@ from .models import Admin, User
 from .services.settings_service import load_all_settings
 from .services.custom_emoji_service import seed_custom_emojis, load_custom_emojis
 from .utils.backup import backup_scheduler
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.exc import IntegrityError
 from .webhook_handler import setup_webhook_routes
 from .services.review_service import review_worker
@@ -63,18 +63,20 @@ async def setup_initial_admins():
             logger.info(f"Суперадмин {admin_id} уже существует (race condition — игнорируем)")
 
 
+def _table_column_names(sync_conn, table: str) -> set[str]:
+    return {column["name"] for column in inspect(sync_conn).get_columns(table)}
+
+
 async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         for table, columns in {
             "categories": {"name_en": "VARCHAR(255)", "description_en": "TEXT"},
             "products": {"name_en": "VARCHAR(255)", "description_en": "TEXT"},
-            "reviews": {"anonymous": "BOOLEAN NOT NULL DEFAULT 0", "moderation_status": "VARCHAR(32) NOT NULL DEFAULT 'pending'", "admin_message_id": "BIGINT"},
+            "reviews": {"anonymous": "BOOLEAN NOT NULL DEFAULT FALSE", "moderation_status": "VARCHAR(32) NOT NULL DEFAULT 'pending'", "admin_message_id": "BIGINT"},
         }.items():
             existing = await conn.run_sync(
-                lambda sync_conn, table=table: {
-                    row[1] for row in sync_conn.exec_driver_sql(f"PRAGMA table_info({table})")
-                }
+                lambda sync_conn, table=table: _table_column_names(sync_conn, table)
             )
             for column, definition in columns.items():
                 if column not in existing:

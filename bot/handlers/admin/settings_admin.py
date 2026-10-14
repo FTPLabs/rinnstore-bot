@@ -1,5 +1,6 @@
 import logging
 import ipaddress
+import re
 from decimal import Decimal
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
@@ -35,6 +36,8 @@ class SettingsState(StatesGroup):
     freekassa_payer_ip = State()
     support_username = State()
     required_channel = State()
+    review_channel_id = State()
+    review_moderation_chat_id = State()
     shop_name = State()
     backup_interval = State()
     add_admin_id = State()
@@ -53,6 +56,10 @@ def settings_main_kb() -> object:
     builder.row(
         InlineKeyboardButton(text=f"{plain(SUPPORT)} Поддержка", callback_data="set_support_username"),
         InlineKeyboardButton(text=f"{plain(BROADCAST)} Канал", callback_data="set_required_channel"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="Канал отзывов", callback_data="set_review_channel"),
+        InlineKeyboardButton(text="Чат модерации", callback_data="set_review_moderation_chat"),
     )
     builder.row(
         InlineKeyboardButton(text=f"{plain(HOME)} Название магазина", callback_data="set_shop_name"),
@@ -106,6 +113,8 @@ async def show_settings(call: CallbackQuery, session: AsyncSession):
     )
 
     channel = all_s.get("required_channel", "") or "не задан"
+    review_channel = all_s.get("review_channel_id", "") or "не задан"
+    moderation_chat = all_s.get("review_moderation_chat_id", "") or "личные сообщения админам"
     webhook_host = all_s.get("webhook_host", env_settings.webhook_host) or "не задан"
 
     text = (
@@ -116,6 +125,8 @@ async def show_settings(call: CallbackQuery, session: AsyncSession):
         f"{GLOBAL} Webhook: {webhook_host}\n"
         f"{SUPPORT} Поддержка: @{all_s.get('support_username', 'support')}\n"
         f"{BROADCAST} Канал: {channel}\n"
+        f"Канал публикации отзывов: {review_channel}\n"
+        f"Чат модерации отзывов: {moderation_chat}\n"
         f"{HOME} Магазин: {all_s.get('shop_name', 'RINN STORE')}\n"
         f"{DISK} Бэкап каждые: {all_s.get('backup_interval', '6')}ч"
     )
@@ -134,6 +145,12 @@ def _cancel_kb(back_cb: str = "admin_settings"):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="✕ Отмена", callback_data=back_cb, style="danger"))
     return builder.as_markup()
+
+
+def _is_valid_telegram_chat_target(value: str) -> bool:
+    if value.startswith("@"):
+        return re.fullmatch(r"@[A-Za-z][A-Za-z0-9_]{4,31}", value) is not None
+    return re.fullmatch(r"-100\d{6,}", value) is not None
 
 
 # ─── CRYPTOBOT ─────────────────────────────────────────────────────────────────
@@ -419,6 +436,72 @@ async def msg_required_channel(message: Message, session: AsyncSession, user: Us
     await set_setting(session, "required_channel", val)
     await state.clear()
     await message.answer(f"{plain(OK)} Подписка: {val or 'отключена'}", reply_markup=settings_main_kb())
+
+
+@router.callback_query(F.data == "set_review_channel")
+async def cb_set_review_channel(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return await call.answer("Нет доступа", show_alert=True)
+    current = await get_setting(session, "review_channel_id")
+    await state.set_state(SettingsState.review_channel_id)
+    await call.message.edit_text(
+        f"Текущий канал отзывов: {current or 'не задан'}\n\n"
+        "Введите @username публичного канала или числовой ID вида -100… .\n"
+        "Добавьте бота в канал с правом публикации. Отправьте «-», чтобы отключить публикацию.",
+        reply_markup=_cancel_kb(), parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.message(SettingsState.review_channel_id)
+async def msg_set_review_channel(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    value = (message.text or "").strip()
+    if value != "-" and not _is_valid_telegram_chat_target(value):
+        await message.answer("Введите @username канала или ID вида -100…; для отключения отправьте «-».")
+        return
+    value = "" if value == "-" else value
+    await set_setting(session, "review_channel_id", value)
+    await log_action(session, user.id, "set_setting", "setting", None, {"key": "review_channel_id"})
+    await state.clear()
+    await message.answer(
+        f"{plain(OK)} Канал отзывов: {value or 'публикация отключена'}",
+        reply_markup=settings_main_kb(),
+    )
+
+
+@router.callback_query(F.data == "set_review_moderation_chat")
+async def cb_set_review_moderation_chat(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return await call.answer("Нет доступа", show_alert=True)
+    current = await get_setting(session, "review_moderation_chat_id")
+    await state.set_state(SettingsState.review_moderation_chat_id)
+    await call.message.edit_text(
+        f"Текущий чат модерации: {current or 'личные сообщения админам'}\n\n"
+        "Введите ID закрытой группы модераторов вида -100… или @username группы.\n"
+        "Добавьте бота в группу. Отправьте «-», чтобы снова отправлять уведомления администраторам в личку.",
+        reply_markup=_cancel_kb(), parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.message(SettingsState.review_moderation_chat_id)
+async def msg_set_review_moderation_chat(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    if not await is_admin(session, user.id):
+        return
+    value = (message.text or "").strip()
+    if value != "-" and not _is_valid_telegram_chat_target(value):
+        await message.answer("Введите @username группы или ID вида -100…; для личных сообщений отправьте «-».")
+        return
+    value = "" if value == "-" else value
+    await set_setting(session, "review_moderation_chat_id", value)
+    await log_action(session, user.id, "set_setting", "setting", None, {"key": "review_moderation_chat_id"})
+    await state.clear()
+    await message.answer(
+        f"{plain(OK)} Чат модерации: {value or 'личные сообщения админам'}",
+        reply_markup=settings_main_kb(),
+    )
 
 
 @router.callback_query(F.data == "set_shop_name")
